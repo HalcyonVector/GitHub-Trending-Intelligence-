@@ -1,0 +1,398 @@
+"""
+Celery tasks for GitHub data ingestion and processing.
+
+Schedule (via celery beat):
+  - ingest_trending_repos: every 6 hours
+  - compute_trend_scores:  every 6 hours (30 min after ingestion)
+  - generate_ai_insights:  daily at 02:00 UTC
+  - aggregate_snapshots:   daily at 03:00 UTC
+"""
+
+import asyncio
+import logging
+from datetime import date, timedelta
+
+from celery import Celery
+from sqlalchemy import select, text
+
+from app.core.config import settings
+from app.core.database import AsyncSessionLocal
+from app.models.repository import DailyMetric, InsightReport, Repository
+from app.services.ai_service import build_summary, generate_repo_insight
+from app.services.github_service import (
+    MONITORED_LANGUAGES,
+    MONITORED_TOPICS,
+    github_service,
+)
+from app.services.trend_service import (
+    aggregate_category_snapshots,
+    classify_repo_categories,
+    compute_daily_gains,
+    compute_weekly_metrics,
+)
+
+logger = logging.getLogger(__name__)
+
+celery_app = Celery(
+    "github_trending",
+    broker=settings.REDIS_URL,
+    backend=settings.REDIS_URL,
+)
+
+celery_app.conf.update(
+    task_serializer="json",
+    result_serializer="json",
+    accept_content=["json"],
+    timezone="UTC",
+    enable_utc=True,
+    beat_schedule={
+        "ingest-trending-repos": {
+            "task": "app.workers.ingestion.ingest_trending_repos",
+            "schedule": 21600,  # 6 hours
+        },
+        "compute-trend-scores": {
+            "task": "app.workers.ingestion.compute_trend_scores",
+            "schedule": 21600,
+            "options": {"countdown": 1800},  # 30 min after ingestion
+        },
+        "generate-ai-insights": {
+            "task": "app.workers.ingestion.generate_ai_insights",
+            "schedule": 86400,  # daily
+        },
+        "aggregate-snapshots": {
+            "task": "app.workers.ingestion.aggregate_snapshots_task",
+            "schedule": 86400,
+        },
+    },
+)
+
+
+def run_async(coro):
+    """
+    Run an async coroutine on a fresh event loop for a sync Celery task.
+
+    The shared async engine pools connections bound to the loop that first used
+    them (asyncpg is loop-affine). Since each task runs on a new loop, we dispose
+    the engine afterward so the next task doesn't reuse connections from a dead
+    loop ("got Future attached to a different loop").
+    """
+    from app.core.database import engine
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        try:
+            loop.run_until_complete(engine.dispose())
+        finally:
+            loop.close()
+
+
+@celery_app.task(bind=True, max_retries=3, default_retry_delay=300)
+def ingest_trending_repos(self):
+    """
+    Fetch trending repositories from GitHub and upsert into DB.
+    Collects from monitored topics + top languages.
+    """
+    logger.info("Starting trending repo ingestion")
+    try:
+        run_async(_ingest_trending_repos())
+    except Exception as exc:
+        logger.error("Ingestion failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
+async def _ingest_trending_repos() -> None:
+    seen_ids: set[int] = set()
+    all_repos: list[dict] = []
+
+    # Collect from topics
+    for topic in MONITORED_TOPICS:
+        repos = await github_service.fetch_trending_by_topic(topic, days_pushed=7)
+        for r in repos:
+            if r["id"] not in seen_ids:
+                seen_ids.add(r["id"])
+                all_repos.append(github_service.parse_repo_data(r))
+
+    # Collect from top languages
+    for lang in MONITORED_LANGUAGES[:5]:  # limit to top 5 in MVP
+        repos = await github_service.fetch_trending_by_language(lang, days_pushed=7)
+        for r in repos:
+            if r["id"] not in seen_ids:
+                seen_ids.add(r["id"])
+                all_repos.append(github_service.parse_repo_data(r))
+
+    logger.info("Fetched %d unique repos from GitHub", len(all_repos))
+    today = date.today()
+
+    async with AsyncSessionLocal() as session:
+        for repo_data in all_repos:
+            # Upsert repository
+            existing = await session.execute(
+                select(Repository).where(Repository.github_id == repo_data["github_id"])
+            )
+            repo = existing.scalar_one_or_none()
+
+            if repo is None:
+                repo = Repository(**{
+                    k: repo_data[k] for k in repo_data
+                    if k not in ("open_issues",)  # only on daily_metrics
+                })
+                session.add(repo)
+                await session.flush()
+            else:
+                # Update cached star/fork counts
+                for field in ("latest_stars", "latest_forks", "latest_watchers",
+                              "github_updated_at", "github_pushed_at", "topics"):
+                    if field in repo_data:
+                        setattr(repo, field, repo_data[field])
+                from datetime import datetime, timezone
+                repo.last_synced_at = datetime.now(timezone.utc)
+
+            # Upsert today's daily metric
+            existing_metric = await session.execute(
+                select(DailyMetric).where(
+                    DailyMetric.repository_id == repo.id,
+                    DailyMetric.date == today,
+                )
+            )
+            metric = existing_metric.scalar_one_or_none()
+            if metric is None:
+                metric = DailyMetric(
+                    repository_id=repo.id,
+                    date=today,
+                    stars_total=repo_data["latest_stars"],
+                    forks_total=repo_data["latest_forks"],
+                    watchers=repo_data["latest_watchers"],
+                    open_issues=repo_data.get("open_issues", 0),
+                    releases_count=0,
+                )
+                session.add(metric)
+            else:
+                metric.stars_total = repo_data["latest_stars"]
+                metric.forks_total = repo_data["latest_forks"]
+                metric.watchers = repo_data["latest_watchers"]
+
+            await session.flush()
+
+            # Auto-classify categories
+            await classify_repo_categories(
+                session, repo.id,
+                repo_data.get("topics", []),
+                repo_data.get("language"),
+            )
+
+        await session.commit()
+
+    logger.info("Ingestion complete: %d repos upserted", len(all_repos))
+
+
+@celery_app.task(bind=True, max_retries=2)
+def compute_trend_scores(self):
+    """Compute daily gains and weekly momentum scores."""
+    logger.info("Computing trend scores")
+    try:
+        run_async(_compute_trend_scores())
+    except Exception as exc:
+        raise self.retry(exc=exc)
+
+
+async def _compute_trend_scores() -> None:
+    today = date.today()
+    # Monday of current week
+    week_start = today - timedelta(days=today.weekday())
+
+    async with AsyncSessionLocal() as session:
+        updated = await compute_daily_gains(session, today)
+        logger.info("Daily gains computed for %d repos", updated)
+
+        await compute_weekly_metrics(session, week_start)
+        logger.info("Weekly metrics computed for week %s", week_start)
+
+        # Fire any watchlist push alerts now that momentum is fresh
+        try:
+            await _dispatch_push_alerts(session)
+        except Exception as exc:  # never let alerts break the pipeline
+            logger.warning("Push alert dispatch failed: %s", exc)
+
+
+async def _dispatch_push_alerts(session) -> None:
+    """
+    Send a Web Push notification when a watched repo crosses a subscriber's
+    momentum threshold. Re-arms when the repo drops back below the threshold,
+    and prunes dead (expired) subscriptions.
+    """
+    from app.services.push_service import push_enabled, send_web_push
+
+    if not push_enabled():
+        return
+
+    subs = (
+        await session.execute(
+            text(
+                "SELECT id, endpoint, p256dh, auth, repo_ids, threshold, alerted_repo_ids "
+                "FROM push_subscriptions"
+            )
+        )
+    ).fetchall()
+    if not subs:
+        return
+
+    # Collect every watched repo id across all subscriptions in one query
+    all_ids: set[int] = set()
+    for s in subs:
+        all_ids.update(s._mapping["repo_ids"] or [])
+    if not all_ids:
+        return
+
+    repo_rows = (
+        await session.execute(
+            text(
+                "SELECT id, full_name, name, momentum_score, stars_gained_week "
+                "FROM repositories WHERE id = ANY(:ids)"
+            ),
+            {"ids": list(all_ids)},
+        )
+    ).fetchall()
+    repo_map = {r._mapping["id"]: r._mapping for r in repo_rows}
+
+    sent = 0
+    for s in subs:
+        sm = s._mapping
+        threshold = sm["threshold"]
+        alerted = set(sm["alerted_repo_ids"] or [])
+        watched = sm["repo_ids"] or []
+        new_alerted = set(alerted)
+        expired = False
+
+        for rid in watched:
+            repo = repo_map.get(rid)
+            if not repo:
+                continue
+            momentum = float(repo["momentum_score"] or 0)
+
+            if momentum >= threshold and rid not in alerted:
+                payload = {
+                    "title": f"{repo['name']} crossed {threshold}",
+                    "body": (
+                        f"{repo['full_name']} · momentum {round(momentum)} · "
+                        f"+{repo['stars_gained_week']:,} stars/wk"
+                    ),
+                    "url": f"/repos/{rid}",
+                }
+                result = send_web_push(
+                    {"endpoint": sm["endpoint"], "p256dh": sm["p256dh"], "auth": sm["auth"]},
+                    payload,
+                )
+                if result == "expired":
+                    await session.execute(
+                        text("DELETE FROM push_subscriptions WHERE id = :id"),
+                        {"id": sm["id"]},
+                    )
+                    expired = True
+                    break
+                if result == "ok":
+                    new_alerted.add(rid)
+                    sent += 1
+            elif momentum < threshold and rid in alerted:
+                # re-arm so it can alert again on the next crossing
+                new_alerted.discard(rid)
+
+        if not expired and new_alerted != alerted:
+            await session.execute(
+                text("UPDATE push_subscriptions SET alerted_repo_ids = :a WHERE id = :id"),
+                {"a": list(new_alerted), "id": sm["id"]},
+            )
+
+    await session.commit()
+    logger.info("Push alerts dispatched: %d sent across %d subscriptions", sent, len(subs))
+
+
+@celery_app.task(bind=True, max_retries=2)
+def aggregate_snapshots_task(self):
+    """Aggregate category trend snapshots."""
+    logger.info("Aggregating category snapshots")
+    try:
+        run_async(_aggregate_snapshots())
+    except Exception as exc:
+        raise self.retry(exc=exc)
+
+
+async def _aggregate_snapshots() -> None:
+    today = date.today()
+    async with AsyncSessionLocal() as session:
+        await aggregate_category_snapshots(session, today)
+    logger.info("Category snapshots aggregated for %s", today)
+
+
+@celery_app.task(bind=True, max_retries=2)
+def generate_ai_insights(self):
+    """Generate AI insights for top repos that don't have a fresh one."""
+    logger.info("Generating AI insights")
+    try:
+        run_async(_generate_ai_insights())
+    except Exception as exc:
+        raise self.retry(exc=exc)
+
+
+async def _generate_ai_insights() -> None:
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+
+    async with AsyncSessionLocal() as session:
+        # Get top repos by momentum without a fresh insight
+        result = await session.execute(
+            text("""
+            SELECT r.id, r.full_name, r.description, r.language, r.topics,
+                   r.latest_stars, r.stars_gained_week, r.latest_forks,
+                   r.github_created_at,
+                   tc.name as category_name
+            FROM repositories r
+            LEFT JOIN repository_categories rc ON rc.repository_id = r.id
+            LEFT JOIN technology_categories tc ON tc.id = rc.category_id
+            LEFT JOIN insight_reports ir ON ir.subject_id = r.id
+                AND ir.report_type = 'repository'
+                AND ir.expires_at > NOW()
+            WHERE ir.id IS NULL
+              AND r.is_archived = FALSE
+            ORDER BY r.momentum_score DESC
+            LIMIT :limit
+            """),
+            {"limit": settings.TOP_REPOS_FOR_INSIGHTS},
+        )
+        rows = result.fetchall()
+        logger.info("Generating insights for %d repos", len(rows))
+
+        for row in rows:
+            repo_dict = dict(row._mapping)
+            insight = await generate_repo_insight(repo_dict)
+            if insight is None:
+                continue
+
+            report = InsightReport(
+                report_type="repository",
+                subject_id=row.id,
+                period_start=date.today(),
+                period_end=date.today(),
+                title=f"Intelligence Report: {row.full_name}",
+                summary=build_summary(insight),
+                why_growing=insight.get("why_growing"),
+                what_it_solves=insight.get("what_it_solves"),
+                who_uses_it=insight.get("who_uses_it"),
+                tech_stack=insight.get("tech_stack"),
+                verdict=insight.get("verdict"),
+                competitors=insight.get("competitors"),
+                tags=insight.get("tags", []),
+                model_used=insight.get("model_used"),
+                tokens_used=insight.get("tokens_used"),
+                generated_at=now,
+                expires_at=datetime.fromisoformat(insight["expires_at"])
+                if insight.get("expires_at") else None,
+            )
+            session.add(report)
+            await session.flush()
+
+        await session.commit()
+
+    logger.info("Insight generation complete")

@@ -1,0 +1,298 @@
+"""
+Trend scoring and category classification service.
+"""
+
+import logging
+import math
+from datetime import date, timedelta
+
+from sqlalchemy import func, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.repository import (
+    DailyMetric, Repository, RepositoryCategory,
+    TechnologyCategory, TrendSnapshot, WeeklyMetric,
+)
+
+logger = logging.getLogger(__name__)
+
+# p95 reference values for normalization (tuned empirically)
+P95_STARS_WEEK = 3000
+P95_FORKS_WEEK = 500
+P95_CONTRIBUTORS = 50
+P95_COMMITS = 100
+P95_ISSUES = 80
+
+
+def normalize_log(value: int, p95: int) -> float:
+    """Map value to [0, 1] using log scale. p95 → ~0.95."""
+    if value <= 0:
+        return 0.0
+    return min(math.log1p(value) / math.log1p(p95), 1.0)
+
+
+def compute_momentum_score(
+    stars_gained_week: int,
+    forks_gained: int,
+    new_contributors: int,
+    commit_activity: int,
+    issues_opened: int,
+    age_days: int,
+) -> float:
+    """
+    Composite momentum score 0–100.
+    Star velocity is the dominant signal (~45%).
+    Recency bonus for repos < 30 days old.
+    """
+    star_v   = normalize_log(stars_gained_week, P95_STARS_WEEK)
+    fork_v   = normalize_log(forks_gained, P95_FORKS_WEEK)
+    contrib_v = normalize_log(new_contributors, P95_CONTRIBUTORS)
+    commit_v  = normalize_log(commit_activity, P95_COMMITS)
+    issue_v   = normalize_log(issues_opened, P95_ISSUES)
+
+    raw = (
+        star_v   * 0.45 +
+        fork_v   * 0.20 +
+        contrib_v * 0.20 +
+        commit_v  * 0.10 +
+        issue_v   * 0.05
+    ) * 100
+
+    recency = 1.2 if age_days < 30 else (1.1 if age_days < 90 else 1.0)
+    return round(min(raw * recency, 100.0), 2)
+
+
+def classify_radar_status(score: float, prev_score: float | None) -> str:
+    """Classify into rising / stable / declining based on score and trend."""
+    if prev_score is None:
+        if score >= 65:
+            return "rising"
+        elif score >= 35:
+            return "stable"
+        return "declining"
+
+    delta = score - prev_score
+    if score >= 65 and delta > 3:
+        return "rising"
+    elif score < 35 or delta < -5:
+        return "declining"
+    return "stable"
+
+
+async def compute_daily_gains(session: AsyncSession, today: date) -> int:
+    """
+    For all repos, compute stars_gained = today_stars - yesterday_stars.
+    Updates both daily_metrics.stars_gained and repositories cached columns.
+    Returns count of repos updated.
+    """
+    yesterday = today - timedelta(days=1)
+
+    result = await session.execute(
+        text("""
+        UPDATE daily_metrics d
+        SET stars_gained = d.stars_total - COALESCE(
+            (SELECT prev.stars_total FROM daily_metrics prev
+             WHERE prev.repository_id = d.repository_id
+               AND prev.date = :yesterday),
+            d.stars_total
+        )
+        WHERE d.date = :today
+        RETURNING d.repository_id
+        """),
+        {"today": today, "yesterday": yesterday},
+    )
+    updated_ids = [r[0] for r in result.fetchall()]
+
+    # Update denormalized cache on repositories
+    if updated_ids:
+        await session.execute(
+            text("""
+            UPDATE repositories r
+            SET stars_gained_today = COALESCE(
+                (SELECT stars_gained FROM daily_metrics
+                 WHERE repository_id = r.id AND date = :today), 0
+            ),
+            updated_at = NOW()
+            WHERE id = ANY(:ids)
+            """),
+            {"today": today, "ids": updated_ids},
+        )
+
+    await session.commit()
+    return len(updated_ids)
+
+
+async def compute_weekly_metrics(session: AsyncSession, week_start: date) -> int:
+    """
+    Aggregate daily_metrics for the week into weekly_metrics.
+    Compute momentum score per repo.
+    """
+    week_end = week_start + timedelta(days=6)
+
+    # Aggregate weekly data
+    result = await session.execute(
+        text("""
+        INSERT INTO weekly_metrics (repository_id, week_start, stars_gained, forks_gained, commit_activity)
+        SELECT
+            repository_id,
+            :week_start,
+            COALESCE(SUM(stars_gained), 0),
+            COALESCE(SUM(forks_gained), 0),
+            COALESCE(MAX(commit_count_week), 0)
+        FROM daily_metrics
+        WHERE date BETWEEN :week_start AND :week_end
+        GROUP BY repository_id
+        ON CONFLICT (repository_id, week_start) DO UPDATE
+            SET stars_gained    = EXCLUDED.stars_gained,
+                forks_gained    = EXCLUDED.forks_gained,
+                commit_activity = EXCLUDED.commit_activity
+        RETURNING repository_id
+        """),
+        {"week_start": week_start, "week_end": week_end},
+    )
+    repo_ids = [r[0] for r in result.fetchall()]
+
+    # Compute momentum score for each
+    for repo_id in repo_ids:
+        row = await session.execute(
+            text("""
+            SELECT w.stars_gained, w.forks_gained, w.new_contributors,
+                   w.commit_activity, w.issues_opened,
+                   EXTRACT(EPOCH FROM (NOW() - r.github_created_at))/86400 as age_days
+            FROM weekly_metrics w
+            JOIN repositories r ON r.id = w.repository_id
+            WHERE w.repository_id = :rid AND w.week_start = :ws
+            """),
+            {"rid": repo_id, "ws": week_start},
+        )
+        m = row.fetchone()
+        if m:
+            score = compute_momentum_score(
+                m.stars_gained, m.forks_gained, m.new_contributors or 0,
+                m.commit_activity or 0, m.issues_opened or 0,
+                int(m.age_days or 0),
+            )
+            await session.execute(
+                text("""
+                UPDATE weekly_metrics SET momentum_score = :score
+                WHERE repository_id = :rid AND week_start = :ws
+                """),
+                {"score": score, "rid": repo_id, "ws": week_start},
+            )
+            # Also update denormalized momentum on repository
+            await session.execute(
+                text("UPDATE repositories SET momentum_score = :score, stars_gained_week = "
+                     "(SELECT stars_gained FROM weekly_metrics WHERE repository_id = :rid AND week_start = :ws) "
+                     "WHERE id = :rid"),
+                {"score": score, "rid": repo_id, "ws": week_start},
+            )
+
+    await session.commit()
+    return len(repo_ids)
+
+
+async def aggregate_category_snapshots(session: AsyncSession, snapshot_date: date) -> None:
+    """Build trend_snapshots by aggregating repos per category."""
+    categories = (await session.execute(select(TechnologyCategory))).scalars().all()
+
+    # Get last week's snapshots for radar classification
+    last_week = snapshot_date - timedelta(days=7)
+
+    for cat in categories:
+        # Sum star velocity for all repos in this category
+        result = await session.execute(
+            text("""
+            SELECT
+                COUNT(DISTINCT r.id)          AS repo_count,
+                COALESCE(SUM(r.latest_stars), 0)   AS total_stars,
+                COALESCE(SUM(r.stars_gained_week), 0) AS stars_gained_week,
+                COALESCE(SUM(r.latest_forks), 0)   AS contributor_count,
+                AVG(r.momentum_score)         AS avg_momentum
+            FROM repositories r
+            JOIN repository_categories rc ON rc.repository_id = r.id
+            WHERE rc.category_id = :cid
+              AND r.is_archived = FALSE
+            """),
+            {"cid": cat.id},
+        )
+        row = result.fetchone()
+        if not row or row.repo_count == 0:
+            continue
+
+        # Get previous week's score for radar delta
+        prev_result = await session.execute(
+            text("SELECT momentum_score FROM trend_snapshots WHERE category_id = :cid AND date = :d"),
+            {"cid": cat.id, "d": last_week},
+        )
+        prev_row = prev_result.fetchone()
+        prev_score = float(prev_row.momentum_score) if prev_row else None
+        current_score = float(row.avg_momentum or 0)
+
+        radar = classify_radar_status(current_score, prev_score)
+
+        await session.execute(
+            text("""
+            INSERT INTO trend_snapshots
+              (category_id, date, total_stars, repo_count, stars_gained_week, momentum_score, radar_status)
+            VALUES (:cid, :d, :ts, :rc, :sw, :ms, :rs)
+            ON CONFLICT (category_id, date) DO UPDATE
+              SET total_stars = EXCLUDED.total_stars,
+                  repo_count = EXCLUDED.repo_count,
+                  stars_gained_week = EXCLUDED.stars_gained_week,
+                  momentum_score = EXCLUDED.momentum_score,
+                  radar_status = EXCLUDED.radar_status
+            """),
+            {
+                "cid": cat.id, "d": snapshot_date, "ts": int(row.total_stars),
+                "rc": row.repo_count, "sw": int(row.stars_gained_week),
+                "ms": round(current_score, 2), "rs": radar,
+            },
+        )
+
+    await session.commit()
+
+
+async def classify_repo_categories(
+    session: AsyncSession, repo_id: int, topics: list[str], language: str | None
+) -> list[int]:
+    """
+    Auto-classify a repository into technology categories based on
+    its GitHub topics and language.
+    Returns list of matched category IDs.
+    """
+    cats = (await session.execute(select(TechnologyCategory))).scalars().all()
+    matched: list[tuple[int, float]] = []
+
+    for cat in cats:
+        score = 0.0
+        topics_lower = {t.lower() for t in (topics or [])}
+        keywords_lower = {k.lower() for k in (cat.keywords or [])}
+        github_topics_lower = {t.lower() for t in (cat.github_topics or [])}
+
+        # Direct topic match (high confidence)
+        topic_hits = topics_lower & github_topics_lower
+        score += len(topic_hits) * 0.5
+
+        # Keyword match in topics or language
+        kw_hits = topics_lower & keywords_lower
+        score += len(kw_hits) * 0.3
+
+        if language and language.lower() in keywords_lower:
+            score += 0.1
+
+        if score > 0:
+            matched.append((cat.id, min(score, 1.0)))
+
+    if matched:
+        for cat_id, confidence in matched:
+            await session.execute(
+                text("""
+                INSERT INTO repository_categories (repository_id, category_id, confidence, tagged_by)
+                VALUES (:rid, :cid, :conf, 'auto')
+                ON CONFLICT (repository_id, category_id) DO UPDATE
+                SET confidence = GREATEST(repository_categories.confidence, EXCLUDED.confidence)
+                """),
+                {"rid": repo_id, "cid": cat_id, "conf": confidence},
+            )
+
+    return [c[0] for c in matched]

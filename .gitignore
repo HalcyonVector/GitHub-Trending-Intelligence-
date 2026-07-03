@@ -1,0 +1,43 @@
+# ── Secrets / environment (NEVER commit — contains GitHub token + VAPID private key) ──
+.env
+.env.*
+!.env.example
+infra/.env
+infra/.env.txt
+
+# ── Local setup notes (kept out of the repo per request) ──
+SETUP.md
+HOW-IT-WORKS.md
+
+# ── Node / Next.js ──
+node_modules/
+.next/
+out/
+build/
+.vercel/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.tsbuildinfo
+next-env.d.ts
+
+# ── Python ──
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── Docker / data ──
+postgres_data/
+redis_data/
+
+# ── OS / editor ──
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

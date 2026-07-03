@@ -1,0 +1,227 @@
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.core.cache import cache_get, cache_set
+from app.core.config import settings
+from app.core.database import get_db
+from app.models.repository import InsightReport, Repository
+from app.schemas.repository import PaginatedRepos, RepoDetail, RepoMetricsResponse
+
+router = APIRouter()
+
+
+@router.get("", response_model=PaginatedRepos)
+async def list_repositories(
+    sort: Literal["stars_gained_today", "stars_gained_week", "momentum_score", "latest_stars"] = "stars_gained_week",
+    language: str | None = None,
+    category: str | None = None,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+):
+    cache_key = f"repos:list:{sort}:{language}:{category}:{page}:{limit}"
+    cached = await cache_get(cache_key)
+    if cached:
+        return cached
+
+    offset = (page - 1) * limit
+
+    filters = ["r.is_archived = FALSE"]
+    params: dict = {"limit": limit, "offset": offset}
+
+    if language:
+        filters.append("r.language = :language")
+        params["language"] = language
+
+    category_join = ""
+    if category:
+        category_join = """
+        JOIN repository_categories rc ON rc.repository_id = r.id
+        JOIN technology_categories tc ON tc.id = rc.category_id AND tc.slug = :category_slug
+        """
+        params["category_slug"] = category
+
+    where = " AND ".join(filters)
+    sort_col = {
+        "stars_gained_today": "r.stars_gained_today",
+        "stars_gained_week": "r.stars_gained_week",
+        "momentum_score": "r.momentum_score",
+        "latest_stars": "r.latest_stars",
+    }[sort]
+
+    query = text(f"""
+        SELECT r.id, r.full_name, r.owner, r.name, r.description, r.language,
+               r.latest_stars, r.stars_gained_today, r.stars_gained_week,
+               r.latest_forks, r.momentum_score, r.topics,
+               r.github_created_at, r.first_seen_at
+        FROM repositories r
+        {category_join}
+        WHERE {where}
+        ORDER BY {sort_col} DESC NULLS LAST
+        LIMIT :limit OFFSET :offset
+    """)
+
+    count_query = text(f"""
+        SELECT COUNT(DISTINCT r.id)
+        FROM repositories r
+        {category_join}
+        WHERE {where}
+    """)
+
+    result = await db.execute(query, params)
+    rows = [dict(r._mapping) for r in result.fetchall()]
+
+    total_result = await db.execute(count_query, params)
+    total = total_result.scalar() or 0
+
+    items = []
+    for r in rows:
+        r["momentum_score"] = float(r.get("momentum_score") or 0)
+        r["topics"] = r.get("topics") or []
+        r["categories"] = []
+        items.append(r)
+
+    response = {
+        "items": items,
+        "total": total,
+        "page": page,
+        "pages": (total + limit - 1) // limit if total else 0,
+        "limit": limit,
+    }
+
+    await cache_set(cache_key, response, settings.CACHE_TTL_REPO_DETAIL)
+    return response
+
+
+@router.get("/{repo_id}", response_model=RepoDetail)
+async def get_repository(repo_id: int, db: AsyncSession = Depends(get_db)):
+    cache_key = f"repos:detail:{repo_id}"
+    cached = await cache_get(cache_key)
+    if cached:
+        return cached
+
+    result = await db.execute(
+        select(Repository)
+        .options(
+            selectinload(Repository.categories),
+            selectinload(Repository.insights),
+        )
+        .where(Repository.id == repo_id)
+    )
+    repo = result.scalar_one_or_none()
+    if not repo:
+        raise HTTPException(status_code=404, detail="Repository not found")
+
+    # Get latest fresh insight
+    insight_result = await db.execute(
+        select(InsightReport)
+        .where(
+            InsightReport.subject_id == repo_id,
+            InsightReport.report_type == "repository",
+        )
+        .order_by(InsightReport.generated_at.desc())
+        .limit(1)
+    )
+    latest_insight = insight_result.scalar_one_or_none()
+
+    data = {
+        "id": repo.id,
+        "github_id": repo.github_id,
+        "full_name": repo.full_name,
+        "owner": repo.owner,
+        "name": repo.name,
+        "description": repo.description,
+        "language": repo.language,
+        "license": repo.license,
+        "topics": repo.topics or [],
+        "homepage_url": repo.homepage_url,
+        "is_archived": repo.is_archived,
+        "is_fork": repo.is_fork,
+        "latest_stars": repo.latest_stars,
+        "latest_forks": repo.latest_forks,
+        "latest_watchers": repo.latest_watchers,
+        "stars_gained_today": repo.stars_gained_today,
+        "stars_gained_week": repo.stars_gained_week,
+        "momentum_score": float(repo.momentum_score or 0),
+        "github_created_at": repo.github_created_at,
+        "github_pushed_at": repo.github_pushed_at,
+        "first_seen_at": repo.first_seen_at,
+        "last_synced_at": repo.last_synced_at,
+        "categories": [
+            {
+                "id": rc.category.id,
+                "name": rc.category.name,
+                "slug": rc.category.slug,
+                "icon": rc.category.icon,
+                "color_hex": rc.category.color_hex,
+            }
+            for rc in repo.categories
+            if rc.category
+        ],
+        "latest_insight": _format_insight(latest_insight) if latest_insight else None,
+    }
+
+    await cache_set(cache_key, data, settings.CACHE_TTL_REPO_DETAIL)
+    return data
+
+
+@router.get("/{repo_id}/metrics", response_model=RepoMetricsResponse)
+async def get_repository_metrics(
+    repo_id: int,
+    period: Literal["7d", "30d", "90d", "1y"] = "30d",
+    db: AsyncSession = Depends(get_db),
+):
+    days = {"7d": 7, "30d": 30, "90d": 90, "1y": 365}[period]
+
+    daily_result = await db.execute(
+        text("""
+        SELECT date, stars_total, forks_total, stars_gained, forks_gained,
+               watchers, open_issues, contributors_count, commit_count_week
+        FROM daily_metrics
+        WHERE repository_id = :rid
+          AND date >= CURRENT_DATE - :days
+        ORDER BY date ASC
+        """),
+        {"rid": repo_id, "days": days},
+    )
+    daily = [dict(r._mapping) for r in daily_result.fetchall()]
+
+    weekly_result = await db.execute(
+        text("""
+        SELECT week_start, stars_gained, forks_gained, new_contributors,
+               commit_activity, momentum_score
+        FROM weekly_metrics
+        WHERE repository_id = :rid
+          AND week_start >= CURRENT_DATE - :days
+        ORDER BY week_start ASC
+        """),
+        {"rid": repo_id, "days": days},
+    )
+    weekly_raw = weekly_result.fetchall()
+    weekly = []
+    for r in weekly_raw:
+        d = dict(r._mapping)
+        d["momentum_score"] = float(d.get("momentum_score") or 0)
+        weekly.append(d)
+
+    return {"repository_id": repo_id, "daily": daily, "weekly": weekly}
+
+
+def _format_insight(insight) -> dict:
+    return {
+        "id": insight.id,
+        "title": insight.title,
+        "summary": insight.summary,
+        "why_growing": insight.why_growing,
+        "what_it_solves": insight.what_it_solves,
+        "who_uses_it": insight.who_uses_it,
+        "tech_stack": insight.tech_stack,
+        "verdict": insight.verdict,
+        "competitors": insight.competitors,
+        "tags": insight.tags or [],
+        "generated_at": insight.generated_at,
+    }

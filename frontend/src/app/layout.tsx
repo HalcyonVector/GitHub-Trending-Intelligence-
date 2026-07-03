@@ -1,0 +1,66 @@
+import type { Metadata } from "next";
+import { Fraunces, Inter, JetBrains_Mono } from "next/font/google";
+import "./globals.css";
+import { Providers } from "@/components/layout/Providers";
+import { AppShell } from "@/components/layout/AppShell";
+
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "900"],
+  display: "swap",
+});
+
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  display: "swap",
+});
+
+const jetbrains = JetBrains_Mono({
+  variable: "--font-mono",
+  subsets: ["latin"],
+  weight: ["400", "500", "700"],
+  display: "swap",
+});
+
+export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:2326"),
+  title: {
+    default: "GitHub Trending Intelligence",
+    template: "%s · GitHub Trending Intelligence",
+  },
+  description:
+    "Bloomberg Terminal for Open Source — discover emerging repositories, AI projects, and developer tools before they go mainstream.",
+  keywords: ["github", "trending", "open source", "ai", "developer tools", "repositories"],
+  openGraph: { type: "website", siteName: "GitHub Trending Intelligence" },
+  alternates: { types: { "application/rss+xml": "/rss.xml" } },
+};
+
+// Runs before paint to apply the saved theme and avoid a flash of the default.
+const themeScript = `(function(){try{var t=localStorage.getItem('gti:theme');if(t==='dusk'||t==='paper'){document.documentElement.setAttribute('data-theme',t);}}catch(e){}})();`;
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en" data-theme="dusk" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
+      <body
+        className={`${fraunces.variable} ${inter.variable} ${jetbrains.variable}`}
+        suppressHydrationWarning
+      >
+        <div className="aurora" aria-hidden="true">
+          <b />
+          <b />
+          <b />
+        </div>
+        <div className="grain" aria-hidden="true" />
+        <Providers>
+          <AppShell>{children}</AppShell>
+        </Providers>
+      </body>
+    </html>
+  );
+}
