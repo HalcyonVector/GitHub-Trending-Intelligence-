@@ -56,7 +56,7 @@ export function TrendsClient() {
               <div
                 key={c.category.id}
                 className="trendrow"
-                onClick={() => router.push(`/search?q=${encodeURIComponent(c.category.name)}`)}
+                onClick={() => router.push(`/trends/${c.category.slug}`)}
               >
                 <div className="idx">{String(i + 1).padStart(2, "0")}</div>
                 <div>

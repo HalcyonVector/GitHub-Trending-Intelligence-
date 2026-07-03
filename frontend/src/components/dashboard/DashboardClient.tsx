@@ -6,6 +6,8 @@ import { useQuery } from "@tanstack/react-query";
 import { getDashboard } from "@/lib/api";
 import type { CategoryMomentum, DashboardData, RepoCard } from "@/lib/types";
 import { formatStat, formatDelta } from "@/lib/utils";
+import { Sparkline } from "@/components/shared/Sparkline";
+import { useSparklines } from "@/hooks/useSparklines";
 
 interface Props {
   initialData: DashboardData | null;
@@ -45,6 +47,11 @@ export function DashboardClient({ initialData }: Props) {
   const leader = hasVelocity ? lead : byStars[0];
   const runnerUp = hasVelocity ? second : byStars[1];
   const totalStars = featured.reduce((s, r) => s + r.latest_stars, 0);
+
+  const sparkIds = Array.from(
+    new Set([...hotToday, ...riseWeek, ...trendingNow, ...byStars.slice(0, 6)].map((r) => r.id))
+  );
+  const sparks = useSparklines(sparkIds);
 
   if (isLoading && !data) return <DashboardSkeleton />;
 
@@ -141,6 +148,11 @@ export function DashboardClient({ initialData }: Props) {
                       )}
                     </div>
                   </div>
+                  <span className="spark">
+                    {(sparks[String(r.id)]?.length ?? 0) > 1 && (
+                      <Sparkline values={sparks[String(r.id)]} color="var(--ember)" />
+                    )}
+                  </span>
                 </div>
               ))}
             </aside>
@@ -180,7 +192,14 @@ export function DashboardClient({ initialData }: Props) {
             Hottest Today
           </div>
           {hotToday.map((r, i) => (
-            <LeaderEntry key={r.id} rank={i + 1} repo={r} metric={r.stars_gained_today} label="today" />
+            <LeaderEntry
+              key={r.id}
+              rank={i + 1}
+              repo={r}
+              metric={r.stars_gained_today}
+              label="today"
+              spark={sparks[String(r.id)]}
+            />
           ))}
         </div>
         <div>
@@ -188,7 +207,14 @@ export function DashboardClient({ initialData }: Props) {
             Rising This Week
           </div>
           {riseWeek.map((r, i) => (
-            <LeaderEntry key={r.id} rank={i + 1} repo={r} metric={r.stars_gained_week} label="week" />
+            <LeaderEntry
+              key={r.id}
+              rank={i + 1}
+              repo={r}
+              metric={r.stars_gained_week}
+              label="week"
+              spark={sparks[String(r.id)]}
+            />
           ))}
         </div>
       </div>
@@ -257,11 +283,13 @@ function LeaderEntry({
   repo,
   metric,
   label,
+  spark,
 }: {
   rank: number;
   repo: RepoCard;
   metric: number;
   label: string;
+  spark?: number[];
 }) {
   const router = useRouter();
   return (
@@ -275,6 +303,11 @@ function LeaderEntry({
         <div className="ds">{repo.description ?? "No description provided."}</div>
       </div>
       <div className="rt">
+        {spark && spark.length > 1 && (
+          <div style={{ marginBottom: 4 }}>
+            <Sparkline values={spark} width={72} height={20} color="var(--gain)" />
+          </div>
+        )}
         <div className="gv">{formatDelta(metric)}</div>
         <div className="gl">stars/{label}</div>
       </div>
@@ -286,7 +319,7 @@ function CategoryCard({ c }: { c: CategoryMomentum }) {
   const router = useRouter();
   const status = (c.radar_status ?? "stable") as "rising" | "stable" | "declining";
   return (
-    <div className="cat" onClick={() => router.push(`/trends`)}>
+    <div className="cat" onClick={() => router.push(`/trends/${c.category.slug}`)}>
       <div className="cn">{c.category.name}</div>
       <div className="cs">
         <span className={`pill ${status}`}>{status}</span>

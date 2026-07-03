@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { search as searchApi } from "@/lib/api";
+import { getRecentRepos } from "@/lib/recent";
 import { formatDelta } from "@/lib/utils";
 
 interface Props {
@@ -11,38 +12,117 @@ interface Props {
   onClose: () => void;
 }
 
+const NAV_CMDS = [
+  { label: "Dashboard", href: "/" },
+  { label: "This Week", href: "/this-week" },
+  { label: "Trends", href: "/trends" },
+  { label: "Radar", href: "/radar" },
+  { label: "Languages", href: "/languages" },
+  { label: "Repositories", href: "/repositories" },
+  { label: "Compare", href: "/compare" },
+  { label: "Watchlist", href: "/watchlist" },
+  { label: "Search", href: "/search" },
+];
+
+interface CmdItem {
+  key: string;
+  label: string;
+  sub: string;
+  run: () => void;
+}
+
 export function CommandPalette({ open, onClose }: Props) {
   const router = useRouter();
   const [q, setQ] = useState("");
+  const [sel, setSel] = useState(0);
 
   const { data } = useQuery({
     queryKey: ["cmdk-search", q],
-    queryFn: () => searchApi(q, 8),
+    queryFn: () => searchApi(q, 6),
     enabled: open && q.trim().length >= 2,
     staleTime: 30_000,
   });
 
   useEffect(() => {
-    if (open) setQ("");
+    if (open) {
+      setQ("");
+      setSel(0);
+    }
   }, [open]);
+
+  useEffect(() => setSel(0), [q]);
+
+  const items: CmdItem[] = useMemo(() => {
+    const ql = q.trim().toLowerCase();
+    const nav = NAV_CMDS.filter((n) => !ql || n.label.toLowerCase().includes(ql)).map((n) => ({
+      key: `nav:${n.href}`,
+      label: n.label,
+      sub: "Go to page",
+      run: () => {
+        onClose();
+        router.push(n.href);
+      },
+    }));
+    const theme: CmdItem[] =
+      !ql || "theme dusk paper".includes(ql)
+        ? [
+            {
+              key: "act:theme",
+              label: "Toggle theme",
+              sub: "Dusk / Paper",
+              run: () => {
+                window.dispatchEvent(new Event("gti-toggle-theme"));
+                onClose();
+              },
+            },
+          ]
+        : [];
+
+    if (ql.length >= 2) {
+      const repos = (data?.repos ?? []).map((r) => ({
+        key: `repo:${r.id}`,
+        label: r.full_name,
+        sub: `${formatDelta(r.stars_gained_week)} stars/wk`,
+        run: () => {
+          onClose();
+          router.push(`/repos/${r.id}`);
+        },
+      }));
+      return [...repos, ...nav, ...theme];
+    }
+
+    const recent = getRecentRepos().map((r) => ({
+      key: `recent:${r.id}`,
+      label: r.full_name,
+      sub: "Recent",
+      run: () => {
+        onClose();
+        router.push(`/repos/${r.id}`);
+      },
+    }));
+    return [...recent, ...nav, ...theme];
+  }, [q, data, onClose, router]);
 
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
+      else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSel((s) => Math.min(s + 1, items.length - 1));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSel((s) => Math.max(s - 1, 0));
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        items[sel]?.run();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open, items, sel, onClose]);
 
   if (!open) return null;
-
-  const repos = data?.repos ?? [];
-
-  function goto(id: number) {
-    onClose();
-    router.push(`/repos/${id}`);
-  }
 
   return (
     <div className="cmdk" onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -51,26 +131,20 @@ export function CommandPalette({ open, onClose }: Props) {
           autoFocus
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search repositories…"
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              onClose();
-              router.push(`/search?q=${encodeURIComponent(q)}`);
-            }
-          }}
+          placeholder="Search repositories, or jump to a page…"
         />
         <div className="cres">
-          {q.trim().length < 2 ? (
-            <div className="cr">
-              <span className="cn" style={{ color: "var(--dim)" }}>
-                Type at least two characters…
-              </span>
-            </div>
-          ) : repos.length ? (
-            repos.map((r) => (
-              <div key={r.id} className="cr" onClick={() => goto(r.id)}>
-                <span className="cn">{r.full_name}</span>
-                <span className="cg">{formatDelta(r.stars_gained_week)}</span>
+          {items.length ? (
+            items.map((it, i) => (
+              <div
+                key={it.key}
+                className="cr"
+                aria-selected={i === sel}
+                onMouseEnter={() => setSel(i)}
+                onClick={it.run}
+              >
+                <span className="cn">{it.label}</span>
+                <span className="cg">{it.sub}</span>
               </div>
             ))
           ) : (

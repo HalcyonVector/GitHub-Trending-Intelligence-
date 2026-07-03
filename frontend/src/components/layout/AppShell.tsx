@@ -10,8 +10,11 @@ import { CommandPalette } from "@/components/shared/CommandPalette";
 
 const NAV = [
   { href: "/", label: "Dashboard" },
+  { href: "/this-week", label: "This Week" },
   { href: "/trends", label: "Trends" },
   { href: "/radar", label: "Radar" },
+  { href: "/languages", label: "Languages" },
+  { href: "/repositories", label: "Repos" },
   { href: "/compare", label: "Compare" },
   { href: "/watchlist", label: "Watchlist" },
   { href: "/search", label: "Search" },
@@ -44,12 +47,38 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  function toggleTheme() {
-    const next: Theme = theme === "dusk" ? "paper" : "dusk";
+  function applyTheme(next: Theme) {
     setTheme(next);
     document.documentElement.setAttribute("data-theme", next);
-    window.localStorage.setItem("gti:theme", next);
+    try {
+      window.localStorage.setItem("gti:theme", next);
+    } catch {
+      /* ignore */
+    }
   }
+  function toggleTheme() {
+    const cur: Theme =
+      document.documentElement.getAttribute("data-theme") === "paper" ? "paper" : "dusk";
+    applyTheme(cur === "dusk" ? "paper" : "dusk");
+  }
+
+  // The ⌘K palette requests a theme toggle via a window event
+  useEffect(() => {
+    const handler = () => {
+      const cur: Theme =
+        document.documentElement.getAttribute("data-theme") === "paper" ? "paper" : "dusk";
+      const next: Theme = cur === "dusk" ? "paper" : "dusk";
+      setTheme(next);
+      document.documentElement.setAttribute("data-theme", next);
+      try {
+        window.localStorage.setItem("gti:theme", next);
+      } catch {
+        /* ignore */
+      }
+    };
+    window.addEventListener("gti-toggle-theme", handler);
+    return () => window.removeEventListener("gti-toggle-theme", handler);
+  }, []);
 
   const { data } = useQuery({ queryKey: ["dashboard"], queryFn: getDashboard, staleTime: 5 * 60_000 });
   const today = data?.top_gaining_today?.reduce((s, r) => s + r.stars_gained_today, 0);

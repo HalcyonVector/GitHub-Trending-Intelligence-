@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
-from app.api.v1 import dashboard, push, repositories, search, trends
+from app.api.v1 import analytics, dashboard, push, repositories, search, trends
 from app.core.config import settings
 
 
@@ -43,6 +43,7 @@ app.include_router(repositories.router, prefix=f"{PREFIX}/repositories", tags=["
 app.include_router(trends.router, prefix=f"{PREFIX}/trends", tags=["Trends"])
 app.include_router(search.router, prefix=f"{PREFIX}/search", tags=["Search"])
 app.include_router(push.router, prefix=f"{PREFIX}/push", tags=["Push"])
+app.include_router(analytics.router, prefix=f"{PREFIX}/analytics", tags=["Analytics"])
 
 
 @app.get("/health")

@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getRepository, getRepositoryMetrics } from "@/lib/api";
+import { addRecentRepo } from "@/lib/recent";
 import type { DailyMetric } from "@/lib/types";
 import { formatStat, formatDelta, getLanguageColor, relativeTime } from "@/lib/utils";
 import { parseCompetitors } from "@/lib/chart";
@@ -22,6 +24,10 @@ export function RepoDetailClient({ id }: { id: number }) {
     staleTime: 5 * 60_000,
     retry: false,
   });
+
+  useEffect(() => {
+    if (repo) addRecentRepo({ id: repo.id, full_name: repo.full_name });
+  }, [repo]);
 
   if (isLoading) return <RepoSkeleton />;
   if (isError || !repo) {

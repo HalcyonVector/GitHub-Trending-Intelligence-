@@ -160,7 +160,7 @@ function Rail({
             <div
               key={c.category.id}
               className="ri"
-              onClick={() => router.push(`/search?q=${encodeURIComponent(c.category.name)}`)}
+              onClick={() => router.push(`/trends/${c.category.slug}`)}
             >
               <div className="rn">{c.category.name}</div>
               <div className="rm">

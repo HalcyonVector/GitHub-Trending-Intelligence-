@@ -102,3 +102,18 @@ export const getRadar = (): Promise<RadarData> =>
 // ─── Search ──────────────────────────────────────────────────────────────────
 export const search = (q: string, limit = 20): Promise<SearchResult> =>
   fetchJSON<SearchResult>("/search", { q, limit });
+
+// ─── Analytics ───────────────────────────────────────────────────────────────
+export interface LanguageStat {
+  language: string;
+  repo_count: number;
+  avg_momentum: number;
+  stars_gained_week: number;
+  total_stars: number;
+}
+export const getLanguages = (): Promise<{ languages: LanguageStat[] }> =>
+  fetchJSON<{ languages: LanguageStat[] }>("/analytics/languages");
+export const getSparklines = (ids: number[]): Promise<{ sparklines: Record<string, number[]> }> =>
+  fetchJSON<{ sparklines: Record<string, number[]> }>("/analytics/sparklines", {
+    ids: ids.join(","),
+  });
