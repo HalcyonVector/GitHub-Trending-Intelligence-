@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { getRepository, getRepositoryMetrics } from "@/lib/api";
+import { getRepository, getRepositoryMetrics, getSimilarRepos } from "@/lib/api";
 import { addRecentRepo } from "@/lib/recent";
 import type { DailyMetric } from "@/lib/types";
 import { formatStat, formatDelta, getLanguageColor, relativeTime } from "@/lib/utils";
@@ -24,6 +25,14 @@ export function RepoDetailClient({ id }: { id: number }) {
     staleTime: 5 * 60_000,
     retry: false,
   });
+
+  const { data: similar } = useQuery({
+    queryKey: ["similar", id],
+    queryFn: () => getSimilarRepos(id),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const router = useRouter();
 
   useEffect(() => {
     if (repo) addRecentRepo({ id: repo.id, full_name: repo.full_name });
@@ -180,6 +189,32 @@ export function RepoDetailClient({ id }: { id: number }) {
           )}
         </div>
       </div>
+
+      {(similar?.similar?.length ?? 0) > 0 && (
+        <>
+          <div className="rulehead">
+            Similar Repositories <span className="meta">shared categories</span>
+          </div>
+          {similar!.similar.map((r) => (
+            <div key={r.id} className="lentry" onClick={() => router.push(`/repos/${r.id}`)}>
+              <div className="rk" style={{ fontSize: 15 }}>
+                →
+              </div>
+              <div>
+                <div className="nm">
+                  {r.full_name}
+                  {r.language && <span className="lang">{r.language}</span>}
+                </div>
+                <div className="ds">{r.description ?? "No description provided."}</div>
+              </div>
+              <div className="rt">
+                <div className="gv">{formatDelta(r.stars_gained_week)}</div>
+                <div className="gl">stars/wk · {Math.round(r.momentum_score)}</div>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
 
       <div className="foot">
         <div className="fb">{repo.full_name}</div>

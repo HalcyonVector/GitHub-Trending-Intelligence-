@@ -132,6 +132,7 @@ export function CommandPalette({ open, onClose }: Props) {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search repositories, or jump to a page…"
+          aria-label="Command palette search"
         />
         <div className="cres">
           {items.length ? (

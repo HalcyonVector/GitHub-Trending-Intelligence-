@@ -211,6 +211,45 @@ async def get_repository_metrics(
     return {"repository_id": repo_id, "daily": daily, "weekly": weekly}
 
 
+@router.get("/{repo_id}/similar")
+async def get_similar(repo_id: int, db: AsyncSession = Depends(get_db)):
+    """Repositories that share the most technology categories with this one."""
+    result = await db.execute(
+        text(
+            """
+            SELECT r.id, r.full_name, r.owner, r.name, r.description, r.language,
+                   r.latest_stars, r.stars_gained_today, r.stars_gained_week,
+                   r.latest_forks, r.momentum_score, r.topics,
+                   r.github_created_at, r.first_seen_at,
+                   COUNT(*) AS shared
+            FROM repository_categories rc
+            JOIN repositories r ON r.id = rc.repository_id
+            WHERE rc.category_id IN (
+                SELECT category_id FROM repository_categories WHERE repository_id = :rid
+            )
+              AND rc.repository_id != :rid
+              AND r.is_archived = FALSE
+            GROUP BY r.id, r.full_name, r.owner, r.name, r.description, r.language,
+                     r.latest_stars, r.stars_gained_today, r.stars_gained_week,
+                     r.latest_forks, r.momentum_score, r.topics,
+                     r.github_created_at, r.first_seen_at
+            ORDER BY shared DESC, r.momentum_score DESC
+            LIMIT 6
+            """
+        ),
+        {"rid": repo_id},
+    )
+    items = []
+    for row in result.fetchall():
+        d = dict(row._mapping)
+        d.pop("shared", None)
+        d["momentum_score"] = float(d.get("momentum_score") or 0)
+        d["topics"] = d.get("topics") or []
+        d["categories"] = []
+        items.append(d)
+    return {"similar": items}
+
+
 def _format_insight(insight) -> dict:
     return {
         "id": insight.id,

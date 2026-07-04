@@ -27,6 +27,7 @@ export function WatchButton({ repo, variant = "button" }: Props) {
         className={`watchicon${watched ? " on" : ""}`}
         onClick={onClick}
         aria-pressed={watched}
+        aria-label={watched ? "Remove from watchlist" : "Add to watchlist"}
         title={watched ? "Remove from watchlist" : "Add to watchlist"}
       >
         {watched ? "★" : "☆"}

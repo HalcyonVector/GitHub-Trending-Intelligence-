@@ -114,10 +114,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </Link>
             ))}
             <div className="spring">
-              <button className="themebtn" onClick={toggleTheme}>
+              <button className="themebtn" onClick={toggleTheme} aria-label="Toggle color theme">
                 {theme === "dusk" ? "◐ Dusk" : "◑ Paper"}
               </button>
-              <button className="kbd" onClick={() => setCmdOpen(true)}>
+              <button
+                className="kbd"
+                onClick={() => setCmdOpen(true)}
+                aria-label="Open command palette"
+              >
                 Search <span>⌘K</span>
               </button>
             </div>

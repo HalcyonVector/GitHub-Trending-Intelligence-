@@ -203,11 +203,22 @@ async def aggregate_category_snapshots(session: AsyncSession, snapshot_date: dat
         result = await session.execute(
             text("""
             SELECT
-                COUNT(DISTINCT r.id)          AS repo_count,
-                COALESCE(SUM(r.latest_stars), 0)   AS total_stars,
+                COUNT(DISTINCT r.id)                  AS repo_count,
+                COALESCE(SUM(r.latest_stars), 0)      AS total_stars,
                 COALESCE(SUM(r.stars_gained_week), 0) AS stars_gained_week,
-                COALESCE(SUM(r.latest_forks), 0)   AS contributor_count,
-                AVG(r.momentum_score)         AS avg_momentum
+                COALESCE(SUM(r.latest_forks), 0)      AS contributor_count,
+                -- category momentum reflects the leaders, not the dormant long tail:
+                -- average of the top 10 repos by momentum in the category
+                COALESCE((
+                    SELECT AVG(t.momentum_score) FROM (
+                        SELECT r2.momentum_score
+                        FROM repositories r2
+                        JOIN repository_categories rc2 ON rc2.repository_id = r2.id
+                        WHERE rc2.category_id = :cid AND r2.is_archived = FALSE
+                        ORDER BY r2.momentum_score DESC
+                        LIMIT 10
+                    ) t
+                ), 0)                                 AS avg_momentum
             FROM repositories r
             JOIN repository_categories rc ON rc.repository_id = r.id
             WHERE rc.category_id = :cid

@@ -4,6 +4,7 @@ import type {
   DashboardData,
   PaginatedRepos,
   RadarData,
+  RepoCard,
   RepoDetail,
   RepoMetrics,
   SearchResult,
@@ -88,6 +89,9 @@ export const getRepository = (id: number): Promise<RepoDetail> =>
 
 export const getRepositoryMetrics = (id: number, period = "30d"): Promise<RepoMetrics> =>
   fetchJSON<RepoMetrics>(`/repositories/${id}/metrics`, { period });
+
+export const getSimilarRepos = (id: number): Promise<{ similar: RepoCard[] }> =>
+  fetchJSON<{ similar: RepoCard[] }>(`/repositories/${id}/similar`);
 
 // ─── Trends ──────────────────────────────────────────────────────────────────
 export const getTrends = (period = "7d"): Promise<TrendsResponse> =>
