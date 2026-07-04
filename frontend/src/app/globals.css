@@ -136,6 +136,14 @@ html[data-theme="paper"] {
   /* ---- trending sidebar ---- */
   .side h3 { font-family:var(--font-fraunces),serif; font-size:13px; letter-spacing:.13em; text-transform:uppercase;
     color:var(--dim); border-bottom:1px solid var(--rule2); padding-bottom:9px; margin-bottom:2px; }
+  .side .sidehead { display:flex; align-items:baseline; justify-content:space-between; border-bottom:1px solid var(--rule2); padding-bottom:9px; margin-bottom:2px; }
+  .side .sidehead h3 { border-bottom:none; padding-bottom:0; margin-bottom:0; }
+  .side .sidenav { display:flex; align-items:center; gap:7px; }
+  .side .sidenav button { background:none; border:1px solid var(--rule2); border-radius:6px; color:var(--dim);
+    cursor:pointer; font-size:13px; width:22px; height:22px; line-height:1; padding:0; transition:.2s var(--ease); }
+  .side .sidenav button:hover:not(:disabled) { border-color:var(--ember); color:var(--ember); }
+  .side .sidenav button:disabled { opacity:.3; cursor:not-allowed; }
+  .side .sidenav .pg { font-family:var(--font-mono),monospace; font-size:9.5px; color:var(--dim2); letter-spacing:.05em; }
   .row { display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid var(--rule);
     cursor:pointer; transition:.22s var(--ease); }
   .row:hover { padding-left:6px; }

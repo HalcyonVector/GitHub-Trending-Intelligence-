@@ -1,3 +1,5 @@
+name: github-trending-intelligence
+
 services:
   # ─── PostgreSQL ───────────────────────────────────────────────
   postgres:

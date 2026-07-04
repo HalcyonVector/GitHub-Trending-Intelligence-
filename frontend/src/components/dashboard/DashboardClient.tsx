@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { getDashboard } from "@/lib/api";
@@ -24,7 +25,7 @@ export function DashboardClient({ initialData }: Props) {
 
   const lead = data?.top_gaining_week?.[0];
   const second = data?.top_gaining_week?.[1];
-  const trendingNow = (data?.top_gaining_today ?? []).slice(0, 6);
+  const trendingNow = (data?.top_gaining_today ?? []).slice(0, 15);
   const hotToday = (data?.top_gaining_today ?? []).slice(0, 6);
   const riseWeek = (data?.top_gaining_week ?? []).slice(0, 6);
   const cats = data?.trending_categories ?? [];
@@ -49,7 +50,7 @@ export function DashboardClient({ initialData }: Props) {
   const totalStars = featured.reduce((s, r) => s + r.latest_stars, 0);
 
   const sparkIds = Array.from(
-    new Set([...hotToday, ...riseWeek, ...trendingNow, ...byStars.slice(0, 6)].map((r) => r.id))
+    new Set([...hotToday, ...riseWeek, ...trendingNow, ...byStars.slice(0, 15)].map((r) => r.id))
   );
   const sparks = useSparklines(sparkIds);
 
@@ -130,31 +131,11 @@ export function DashboardClient({ initialData }: Props) {
               </p>
             </div>
             <aside className="side">
-              <h3>{hasVelocity ? "Trending Now" : "Most Starred"}</h3>
-              {(hasVelocity ? trendingNow : byStars.slice(0, 6)).map((r, i) => (
-                <div key={r.id} className="row" onClick={() => router.push(`/repos/${r.id}`)}>
-                  <span className="n">{String(i + 1).padStart(2, "0")}</span>
-                  <div className="body">
-                    <div className="t">{r.name}</div>
-                    <div className="m">
-                      {r.language ?? "—"} ·{" "}
-                      {hasVelocity ? (
-                        <>
-                          <b>{Math.round(r.momentum_score)}</b> momentum ·{" "}
-                          {formatDelta(r.stars_gained_today)}
-                        </>
-                      ) : (
-                        <>{formatStat(r.latest_stars)} stars</>
-                      )}
-                    </div>
-                  </div>
-                  <span className="spark">
-                    {(sparks[String(r.id)]?.length ?? 0) > 1 && (
-                      <Sparkline values={sparks[String(r.id)]} color="var(--ember)" />
-                    )}
-                  </span>
-                </div>
-              ))}
+              <SideList
+                items={hasVelocity ? trendingNow : byStars.slice(0, 15)}
+                hasVelocity={hasVelocity}
+                sparks={sparks}
+              />
             </aside>
           </div>
 
@@ -277,6 +258,75 @@ function Stat({ n, l, ember }: { n: string; l: string; ember?: boolean }) {
   );
 }
 
+
+function SideList({
+  items,
+  hasVelocity,
+  sparks,
+}: {
+  items: RepoCard[];
+  hasVelocity: boolean;
+  sparks: Record<string, number[]>;
+}) {
+  const router = useRouter();
+  const [page, setPage] = useState(0);
+  const perPage = 5;
+  const totalPages = Math.max(1, Math.ceil(items.length / perPage));
+  const clamped = Math.min(page, totalPages - 1);
+  const pageItems = items.slice(clamped * perPage, clamped * perPage + perPage);
+
+  return (
+    <>
+      <div className="sidehead">
+        <h3>{hasVelocity ? "Trending Now" : "Most Starred"}</h3>
+        {totalPages > 1 && (
+          <div className="sidenav">
+            <button aria-label="Previous page" disabled={clamped <= 0} onClick={() => setPage(clamped - 1)}>
+              ‹
+            </button>
+            <span className="pg">
+              {clamped + 1}/{totalPages}
+            </span>
+            <button
+              aria-label="Next page"
+              disabled={clamped >= totalPages - 1}
+              onClick={() => setPage(clamped + 1)}
+            >
+              ›
+            </button>
+          </div>
+        )}
+      </div>
+      {pageItems.map((r, i) => {
+        const rank = clamped * perPage + i + 1;
+        return (
+          <div key={r.id} className="row" onClick={() => router.push(`/repos/${r.id}`)}>
+            <span className="n">{String(rank).padStart(2, "0")}</span>
+            <div className="body">
+              <div className="t">{r.name}</div>
+              <div className="m">
+                {r.language ?? "—"} ·{" "}
+                {hasVelocity ? (
+                  <>
+                    <b>{Math.round(r.momentum_score)}</b> momentum ·{" "}
+                    {formatDelta(r.stars_gained_today)}
+                  </>
+                ) : (
+                  <>{formatStat(r.latest_stars)} stars</>
+                )}
+              </div>
+            </div>
+            <span className="spark">
+              {(sparks[String(r.id)]?.length ?? 0) > 1 && (
+                <Sparkline values={sparks[String(r.id)]} color="var(--ember)" />
+              )}
+            </span>
+          </div>
+        );
+      })}
+    </>
+  );
+}
 
 function LeaderEntry({
   rank,

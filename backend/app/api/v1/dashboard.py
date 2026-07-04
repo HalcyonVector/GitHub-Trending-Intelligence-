@@ -31,7 +31,7 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
         FROM repositories r
         WHERE r.is_archived = FALSE
         ORDER BY r.stars_gained_today DESC
-        LIMIT 10
+        LIMIT 15
         """)
     )
     top_today = [dict(row._mapping) for row in top_today_result.fetchall()]
@@ -46,7 +46,7 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
         FROM repositories r
         WHERE r.is_archived = FALSE
         ORDER BY r.stars_gained_week DESC
-        LIMIT 10
+        LIMIT 15
         """)
     )
     top_week = [dict(row._mapping) for row in top_week_result.fetchall()]
