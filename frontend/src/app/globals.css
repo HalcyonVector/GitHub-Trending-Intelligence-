@@ -400,7 +400,7 @@ html[data-theme="paper"] {
 @media (max-width:560px) {
   .wrap { padding:0 16px; }
   .catgrid { grid-template-columns:1fr; }
-  .masthead { flex-direction:column; align-items:flex-start; gap:2px; padding:16px 0 10px; }
+  .masthead { flex-direction:column; align-items:flex-start; gap:2px; padding:24px 0 18px; }
   /* wordmark: flow as normal text (not flex) so it doesn't split awkwardly */
   .brand { display:block; font-size:20px; letter-spacing:-.02em; line-height:1.15; }
   .brand em { display:inline; }
@@ -409,8 +409,8 @@ html[data-theme="paper"] {
   /* breathing room between the sticky header and the page content */
   main.wrap { padding-top:22px; }
   /* clearer tabs: pill on the active one, hide the ⌘K search (no keyboard on phones) */
-  .tabs { padding:10px 0; }
-  .tabs a { white-space:nowrap; padding:7px 12px; font-size:11px; }
+  .tabs { padding:6px 0; }
+  .tabs a { white-space:nowrap; padding:5px 12px; font-size:11px; }
   .tabs a.on { background:color-mix(in srgb,var(--ember) 15%,transparent); border-radius:8px; }
   .tabs a.on::after { display:none; }
   .kbd { display:none; }
