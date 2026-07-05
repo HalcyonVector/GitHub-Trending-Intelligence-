@@ -132,6 +132,7 @@ export interface Breakout {
   stars_gained_week: number;
   momentum_score: number;
   age_days: number | null;
+  verdict?: string | null;
 }
 export const getBreakouts = (): Promise<{ breakouts: Breakout[] }> =>
   fetchJSON<{ breakouts: Breakout[] }>("/analytics/breakouts");

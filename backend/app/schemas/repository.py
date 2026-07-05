@@ -36,6 +36,7 @@ class RepoCard(BaseModel):
     categories: list[CategoryOut] = []
     github_created_at: datetime | None
     first_seen_at: datetime
+    verdict: str | None = None
 
     class Config:
         from_attributes = True

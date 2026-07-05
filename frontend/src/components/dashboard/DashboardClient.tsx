@@ -381,7 +381,7 @@ function LeaderEntry({
           {repo.name}
           {repo.language && <span className="lang">{repo.language}</span>}
         </div>
-        <div className="ds">{repo.description ?? "No description provided."}</div>
+        <div className="ds">{repo.verdict ?? repo.description ?? "No description provided."}</div>
       </div>
       <div className="rt">
         {spark && spark.length > 1 && (
@@ -409,7 +409,7 @@ function BreakoutEntry({ rank, b }: { rank: number; b: Breakout }) {
           {b.language && <span className="lang">{b.language}</span>}
           {b.age_days != null && <span className="badge-new">{b.age_days}d</span>}
         </div>
-        <div className="ds">{b.full_name}</div>
+        <div className="ds">{b.verdict ?? b.full_name}</div>
       </div>
       <div className="rt">
         <div className="gv" style={{ color: "var(--ember)" }}>

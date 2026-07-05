@@ -392,3 +392,10 @@ html[data-theme="paper"] {
   .trendrow .tspark { display:none; }
   .tabs { overflow-x:auto; }
 }
+
+@media (max-width:560px) {
+  .wrap { padding:0 16px; }
+  .catgrid { grid-template-columns:1fr; }
+  .masthead { flex-direction:column; align-items:flex-start; gap:4px; }
+  .issue { text-align:left; }
+}

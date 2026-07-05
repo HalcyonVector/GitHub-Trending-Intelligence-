@@ -129,6 +129,9 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
     )
     new_entrants = _format_repo_list([dict(r._mapping) for r in new_result.fetchall()])
 
+    await _attach_verdicts(db, top_today)
+    await _attach_verdicts(db, top_week)
+
     response = {
         "top_gaining_today": _format_repo_list(top_today),
         "top_gaining_week": _format_repo_list(top_week),
@@ -147,4 +150,29 @@ def _format_repo_list(rows: list[dict]) -> list[dict]:
         r["momentum_score"] = float(r.get("momentum_score") or 0)
         r["topics"] = r.get("topics") or []
         r["categories"] = []
+        r.setdefault("verdict", None)
     return rows
+
+
+async def _attach_verdicts(db: AsyncSession, rows: list[dict]) -> None:
+    """Attach the latest AI 'verdict' one-liner to each repo dict (if one exists)."""
+    ids = [r["id"] for r in rows]
+    if not ids:
+        return
+    res = await db.execute(
+        text(
+            """
+            SELECT DISTINCT ON (subject_id) subject_id, verdict, summary
+            FROM insight_reports
+            WHERE report_type = 'repository' AND subject_id = ANY(:ids)
+            ORDER BY subject_id, generated_at DESC
+            """
+        ),
+        {"ids": ids},
+    )
+    vmap = {
+        m["subject_id"]: (m["verdict"] or m["summary"])
+        for m in (row._mapping for row in res.fetchall())
+    }
+    for r in rows:
+        r["verdict"] = vmap.get(r["id"])

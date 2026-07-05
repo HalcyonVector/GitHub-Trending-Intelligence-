@@ -96,13 +96,17 @@ async def get_breakouts(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         text(
             """
-            SELECT id, full_name, name, language, latest_stars,
-                   stars_gained_week, momentum_score, github_created_at
-            FROM repositories
-            WHERE is_archived = FALSE
-              AND github_created_at >= NOW() - (:max_age * INTERVAL '1 day')
-              AND momentum_score >= :min_mom
-            ORDER BY momentum_score DESC
+            SELECT r.id, r.full_name, r.name, r.language, r.latest_stars,
+                   r.stars_gained_week, r.momentum_score, r.github_created_at,
+                   (SELECT COALESCE(ir.verdict, ir.summary)
+                    FROM insight_reports ir
+                    WHERE ir.subject_id = r.id AND ir.report_type = 'repository'
+                    ORDER BY ir.generated_at DESC LIMIT 1) AS verdict
+            FROM repositories r
+            WHERE r.is_archived = FALSE
+              AND r.github_created_at >= NOW() - (:max_age * INTERVAL '1 day')
+              AND r.momentum_score >= :min_mom
+            ORDER BY r.momentum_score DESC
             LIMIT :limit
             """
         ),
@@ -129,6 +133,7 @@ async def get_breakouts(db: AsyncSession = Depends(get_db)):
                 "stars_gained_week": int(d["stars_gained_week"] or 0),
                 "momentum_score": round(float(d["momentum_score"] or 0), 1),
                 "age_days": age_days,
+                "verdict": d.get("verdict"),
             }
         )
 

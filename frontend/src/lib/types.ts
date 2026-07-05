@@ -24,6 +24,7 @@ export interface RepoCard {
   categories: Category[];
   github_created_at: string | null;
   first_seen_at: string;
+  verdict?: string | null;
 }
 
 export interface DailyMetric {
