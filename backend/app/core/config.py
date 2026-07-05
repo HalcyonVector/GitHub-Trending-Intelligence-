@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     # Ollama (local / self-hosted, free). host.docker.internal reaches the host
     # from inside a container; change to your Ollama URL when you host it.
     OLLAMA_BASE_URL: str = "http://host.docker.internal:11434"
-    OLLAMA_MODEL: str = "llama3.2"
+    OLLAMA_MODEL: str = "qwen2.5:7b"
 
     # Anthropic Claude (optional, paid). Leave key blank unless AI_PROVIDER=anthropic.
     ANTHROPIC_API_KEY: str = ""
@@ -79,7 +79,7 @@ class Settings(BaseSettings):
     DISCORD_WEBHOOK_URL: str = ""
     SLACK_WEBHOOK_URL: str = ""
     RESEND_API_KEY: str = ""              # https://resend.com free tier
-    ALERT_EMAIL_TO: str = ""
+    ALERT_EMAIL_TO: str = ""              # one address, or comma-separated for multiple subscribers
     ALERT_EMAIL_FROM: str = "GTI <onboarding@resend.dev>"  # Resend's shared test sender
 
     # Breakout detection: young + accelerating repos

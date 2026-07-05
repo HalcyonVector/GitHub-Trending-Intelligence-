@@ -13,11 +13,16 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
+def _email_recipients() -> list[str]:
+    """ALERT_EMAIL_TO holds one address, or a comma-separated list of subscribers."""
+    return [e.strip() for e in (settings.ALERT_EMAIL_TO or "").split(",") if e.strip()]
+
+
 def any_channel_configured() -> bool:
     return bool(
         settings.DISCORD_WEBHOOK_URL
         or settings.SLACK_WEBHOOK_URL
-        or (settings.RESEND_API_KEY and settings.ALERT_EMAIL_TO)
+        or (settings.RESEND_API_KEY and _email_recipients())
     )
 
 
@@ -42,22 +47,26 @@ async def _send_slack(client: httpx.AsyncClient, text: str) -> None:
 
 
 async def _send_email(client: httpx.AsyncClient, subject: str, html: str) -> None:
-    if not (settings.RESEND_API_KEY and settings.ALERT_EMAIL_TO):
+    recipients = _email_recipients()
+    if not (settings.RESEND_API_KEY and recipients):
         return
-    try:
-        r = await client.post(
-            "https://api.resend.com/emails",
-            headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}"},
-            json={
-                "from": settings.ALERT_EMAIL_FROM,
-                "to": [settings.ALERT_EMAIL_TO],
-                "subject": subject,
-                "html": html,
-            },
-        )
-        r.raise_for_status()
-    except Exception as e:
-        logger.warning("Email notify failed: %s", e)
+    # One request per subscriber, so addresses stay private (no shared To/CC) and one
+    # bad address never blocks the rest.
+    for addr in recipients:
+        try:
+            r = await client.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}"},
+                json={
+                    "from": settings.ALERT_EMAIL_FROM,
+                    "to": [addr],
+                    "subject": subject,
+                    "html": html,
+                },
+            )
+            r.raise_for_status()
+        except Exception as e:
+            logger.warning("Email notify failed for %s: %s", addr, e)
 
 
 async def notify(subject: str, text_body: str, html_body: str | None = None) -> None:

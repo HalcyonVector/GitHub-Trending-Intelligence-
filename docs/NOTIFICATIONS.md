@@ -27,11 +27,15 @@ All values go in **repo → Settings → Secrets and variables → Actions → N
 
 ### Email (Resend, free)
 1. Sign up at https://resend.com and create an **API key**.
-2. Add secrets: `RESEND_API_KEY` = the key, and `ALERT_EMAIL_TO` = your email.
+2. Add secrets: `RESEND_API_KEY` = the key, and `ALERT_EMAIL_TO` = your email. For
+   **multiple subscribers**, make `ALERT_EMAIL_TO` a comma-separated list
+   (`me@example.com, you@example.com`) — each person gets their own private copy
+   (one send per address, no shared To/CC).
 3. The default sender is Resend's shared `onboarding@resend.dev`, which (on the free
-   tier) can only deliver to the email you signed up with — so set `ALERT_EMAIL_TO` to
-   that address. To send from your own domain, verify it in Resend and set
-   `ALERT_EMAIL_FROM` (env/var) accordingly.
+   tier) can only deliver to the address you signed up with — fine for a personal
+   digest. To send to **other** subscribers, verify your own domain in Resend and set
+   `ALERT_EMAIL_FROM` (env/var) to an address on it; then any recipient in the list
+   receives the digest.
 
 ## Test it
 
