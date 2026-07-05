@@ -24,8 +24,9 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
 
-    # GitHub
-    GITHUB_TOKEN: str
+    # GitHub — only the ingestion pipeline (GitHub Actions) needs this; the API
+    # server never calls GitHub, so it's optional and defaults to empty.
+    GITHUB_TOKEN: str = ""
     GITHUB_API_BASE: str = "https://api.github.com"
     GITHUB_GRAPHQL_URL: str = "https://api.github.com/graphql"
 
