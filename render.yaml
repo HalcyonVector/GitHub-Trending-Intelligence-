@@ -1,0 +1,32 @@
+# Render Blueprint for the FastAPI backend (free tier).
+# In Render: New +  ->  Blueprint  ->  point at this repo. It reads this file.
+# Free web services spin down after ~15 min idle and cold-start in ~30-60s on the
+# next request. Set the secret values (sync:false) in the Render dashboard.
+
+services:
+  - type: web
+    name: gti-api
+    runtime: docker
+    plan: free
+    dockerfilePath: backend/Dockerfile
+    dockerContext: backend
+    # Bind to the port Render assigns instead of the Dockerfile's fixed 8000.
+    dockerCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /docs
+    envVars:
+      - key: DATABASE_URL        # Supabase connection string (postgresql+asyncpg://...)
+        sync: false
+      - key: GITHUB_TOKEN        # GitHub personal access token
+        sync: false
+      - key: AI_PROVIDER
+        value: groq
+      - key: LLM_API_KEY         # Groq (or other) API key
+        sync: false
+      - key: LLM_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: LLM_MODEL
+        value: llama-3.3-70b-versatile
+      - key: FRONTEND_URL        # your Vercel URL, e.g. https://your-app.vercel.app
+        sync: false
+      - key: DEBUG
+        value: "false"

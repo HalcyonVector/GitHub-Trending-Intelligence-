@@ -14,6 +14,9 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "https://yourapp.vercel.app",
     ]
+    # Production frontend origin (e.g. https://your-app.vercel.app). When set, it is
+    # appended to CORS_ORIGINS at startup so you don't have to edit the list above.
+    FRONTEND_URL: str = ""
 
     # Database
     DATABASE_URL: str  # postgresql+asyncpg://user:pass@host/db
@@ -33,8 +36,16 @@ class Settings(BaseSettings):
     VAPID_SUBJECT: str = "mailto:admin@example.com"
 
     # AI insight generation — pluggable provider.
-    AI_PROVIDER: str = "ollama"  # "ollama" (free, local) | "anthropic" (paid) | "off"
+    # "ollama" (free, local) | "groq"/"openai" (free/paid API) | "anthropic" (paid) | "off"
+    AI_PROVIDER: str = "ollama"
     AI_MAX_TOKENS: int = 1024
+
+    # Free/hosted OpenAI-compatible LLM (Groq, Gemini's OpenAI endpoint, OpenAI, etc.).
+    # Used when AI_PROVIDER is "groq" or "openai". Groq's free tier needs no credit card.
+    # Grab a current model id from https://console.groq.com/docs/models
+    LLM_API_KEY: str = ""
+    LLM_BASE_URL: str = "https://api.groq.com/openai/v1"
+    LLM_MODEL: str = "llama-3.3-70b-versatile"
 
     # Ollama (local / self-hosted, free). host.docker.internal reaches the host
     # from inside a container; change to your Ollama URL when you host it.

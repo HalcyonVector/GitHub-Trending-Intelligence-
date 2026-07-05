@@ -77,6 +77,8 @@ async def generate_repo_insight(repo: dict) -> dict | None:
     try:
         if provider == "anthropic":
             raw, model, tokens = await _via_anthropic(prompt)
+        elif provider in ("groq", "openai", "llm"):
+            raw, model, tokens = await _via_openai_compatible(prompt)
         else:
             raw, model, tokens = await _via_ollama(prompt)
     except Exception as e:
@@ -111,6 +113,39 @@ async def _via_ollama(prompt: str) -> tuple[str, str, int]:
     content = data.get("message", {}).get("content", "")
     tokens = int(data.get("prompt_eval_count") or 0) + int(data.get("eval_count") or 0)
     return content, settings.OLLAMA_MODEL, tokens
+
+
+async def _via_openai_compatible(prompt: str) -> tuple[str, str, int]:
+    """
+    Call any OpenAI-compatible chat API (Groq, Gemini's OpenAI endpoint, OpenAI…).
+    Groq's free tier is fast and needs no credit card. Configured via LLM_* settings.
+    """
+    if not settings.LLM_API_KEY:
+        raise RuntimeError("LLM_API_KEY is not set (AI_PROVIDER=groq/openai)")
+    url = settings.LLM_BASE_URL.rstrip("/") + "/chat/completions"
+    payload = {
+        "model": settings.LLM_MODEL,
+        "temperature": 0.4,
+        "max_tokens": settings.AI_MAX_TOKENS,
+        "response_format": {"type": "json_object"},  # ask for strict JSON
+        "messages": [
+            {"role": "system", "content": INSIGHT_PROMPT_SYSTEM},
+            {"role": "user", "content": prompt},
+        ],
+    }
+    headers = {"Authorization": f"Bearer {settings.LLM_API_KEY}"}
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.post(url, json=payload, headers=headers)
+        # Some models reject response_format=json_object; retry once without it.
+        if resp.status_code == 400 and "response_format" in resp.text:
+            payload.pop("response_format", None)
+            resp = await client.post(url, json=payload, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+    content = data["choices"][0]["message"]["content"]
+    usage = data.get("usage") or {}
+    tokens = int(usage.get("total_tokens") or 0)
+    return content, settings.LLM_MODEL, tokens
 
 
 async def _via_anthropic(prompt: str) -> tuple[str, str, int]:
