@@ -15,7 +15,6 @@ const NAV = [
   { href: "/repositories", label: "Repos" },
   { href: "/compare", label: "Compare" },
   { href: "/watchlist", label: "Watchlist" },
-  { href: "/search", label: "Search" },
 ];
 
 type Theme = "dusk" | "paper";

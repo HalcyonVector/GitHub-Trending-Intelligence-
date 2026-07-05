@@ -247,6 +247,10 @@ html[data-theme="paper"] {
   .searchbox input:focus { border-color:var(--ember); box-shadow:0 0 0 4px color-mix(in srgb,var(--ember) 14%,transparent); }
   .searchbox input::placeholder { color:var(--dim2); }
   .searchbox .ico { position:absolute; left:20px; top:50%; transform:translateY(-50%); color:var(--ember); font-size:20px; }
+  /* compact search bar embedded at the top of the dashboard */
+  .dashsearch { margin-top:0; margin-bottom:26px; }
+  .dashsearch input { font-size:15px; padding:13px 16px 13px 44px; border-radius:12px; }
+  .dashsearch .ico { font-size:17px; left:16px; }
   .filters { display:flex; gap:8px; margin-top:16px; flex-wrap:wrap; }
   .chip { font-family:var(--font-mono),monospace; font-size:10.5px; letter-spacing:.06em; text-transform:uppercase;
     color:var(--dim); border:1px solid var(--rule2); border-radius:20px; padding:7px 14px; cursor:pointer; transition:.22s var(--ease); }

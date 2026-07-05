@@ -16,6 +16,10 @@ interface Props {
 
 export function DashboardClient({ initialData }: Props) {
   const router = useRouter();
+  const [q, setQ] = useState("");
+  const runSearch = () => {
+    if (q.trim()) router.push(`/search?q=${encodeURIComponent(q.trim())}`);
+  };
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard"],
     queryFn: getDashboard,
@@ -65,6 +69,16 @@ export function DashboardClient({ initialData }: Props) {
 
   return (
     <div className="fade-up">
+      <div className="searchbox dashsearch">
+        <span className="ico">⌕</span>
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && runSearch()}
+          placeholder="Search repositories…"
+          aria-label="Search repositories"
+        />
+      </div>
       <div className="kicker">The Big Story · This week</div>
       {leader ? (
         <>
