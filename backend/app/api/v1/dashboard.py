@@ -132,6 +132,15 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
     await _attach_verdicts(db, top_today)
     await _attach_verdicts(db, top_week)
 
+    # Data freshness — how much real history we've actually accumulated.
+    fresh = (
+        await db.execute(
+            text("SELECT MIN(date) AS since, COUNT(DISTINCT date) AS days FROM daily_metrics")
+        )
+    ).fetchone()
+    data_since = fresh._mapping["since"] if fresh else None
+    snapshot_days = int(fresh._mapping["days"] or 0) if fresh else 0
+
     response = {
         "top_gaining_today": _format_repo_list(top_today),
         "top_gaining_week": _format_repo_list(top_week),
@@ -139,6 +148,8 @@ async def get_dashboard(db: AsyncSession = Depends(get_db)):
         "ai_ecosystem": ai_ecosystem,
         "new_entrants": new_entrants,
         "generated_at": datetime.now(timezone.utc).isoformat(),
+        "data_since": data_since.isoformat() if data_since else None,
+        "snapshot_days": snapshot_days,
     }
 
     await cache_set(cache_key, response, settings.CACHE_TTL_DASHBOARD)

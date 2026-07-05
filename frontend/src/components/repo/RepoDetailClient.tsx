@@ -59,6 +59,18 @@ export function RepoDetailClient({ id }: { id: number }) {
   const starsSeries = daily.map((d) => d.stars_total);
   const gainedSeries = daily.slice(-30).map((d) => d.stars_gained);
 
+  // ── Hype vs. substance (#3): is momentum backed by real dev activity, or just stars? ──
+  const weekly = metrics?.weekly ?? [];
+  const lastWeek = weekly[weekly.length - 1];
+  const commitAct = lastWeek?.commit_activity ?? latestDaily?.commit_count_week ?? 0;
+  const newContrib = lastWeek?.new_contributors ?? 0;
+  const forkRatio = repo.latest_stars ? repo.latest_forks / repo.latest_stars : 0;
+  const hasActivity = commitAct > 0 || newContrib > 0 || forkRatio > 0.04;
+  const signal = hasActivity
+    ? { label: "Backed by activity", color: "var(--gain)" }
+    : { label: "Star-driven", color: "var(--dim)" };
+  const momentumSeries = weekly.map((w) => w.momentum_score);
+
   return (
     <div className="fade-up">
       <div className="rhero">
@@ -80,6 +92,21 @@ export function RepoDetailClient({ id }: { id: number }) {
           {repo.github_created_at && <span>◇ Created {new Date(repo.github_created_at).getFullYear()}</span>}
           {repo.last_synced_at && <span>↻ Synced {relativeTime(repo.last_synced_at)}</span>}
           {repo.categories[0] && <span className="aitag">{repo.categories[0].name}</span>}
+          <span
+            title="Whether momentum is backed by contributor/commit activity, or driven mainly by stars"
+            style={{
+              color: signal.color,
+              border: `1px solid ${signal.color}`,
+              borderRadius: 20,
+              padding: "2px 10px",
+              fontFamily: "var(--font-mono)",
+              fontSize: 10,
+              letterSpacing: ".06em",
+              textTransform: "uppercase",
+            }}
+          >
+            {signal.label}
+          </span>
         </div>
         <div style={{ display: "flex", gap: 10, marginTop: 18, alignItems: "center", flexWrap: "wrap" }}>
           <WatchButton
@@ -125,6 +152,16 @@ export function RepoDetailClient({ id }: { id: number }) {
               <BarChart values={gainedSeries} />
             ) : (
               <div className="note" style={{ margin: 0 }}>No daily velocity recorded yet.</div>
+            )}
+          </div>
+          <div className="chartcard" style={{ marginTop: 22 }}>
+            <h4>
+              Momentum over time <span>last {momentumSeries.length || 0} weeks</span>
+            </h4>
+            {momentumSeries.length > 1 ? (
+              <AreaChart values={momentumSeries} />
+            ) : (
+              <div className="note" style={{ margin: 0 }}>Momentum history builds each week.</div>
             )}
           </div>
         </div>

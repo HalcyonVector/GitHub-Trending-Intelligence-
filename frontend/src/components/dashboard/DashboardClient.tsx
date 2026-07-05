@@ -285,9 +285,14 @@ export function DashboardClient({ initialData }: Props) {
           GitHub Trending <span style={{ color: "var(--ember)" }}>Intelligence</span>
         </div>
         <div className="fm" suppressHydrationWarning>
-          {data?.generated_at
-            ? `Updated ${new Date(data.generated_at).toLocaleTimeString()}`
-            : "Bloomberg terminal for open source"}
+          {data?.snapshot_days
+            ? `${data.snapshot_days} daily snapshot${data.snapshot_days === 1 ? "" : "s"}${
+                data.data_since
+                  ? ` since ${new Date(data.data_since).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
+                  : ""
+              }${data.snapshot_days < 7 ? " · momentum still stabilizing" : ""}`
+            : "Data collecting…"}
+          {data?.generated_at ? ` · updated ${new Date(data.generated_at).toLocaleTimeString()}` : ""}
         </div>
       </div>
     </div>

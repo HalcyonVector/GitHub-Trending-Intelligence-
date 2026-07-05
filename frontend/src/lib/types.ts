@@ -33,7 +33,6 @@ export interface DailyMetric {
   forks_total: number;
   stars_gained: number;
   forks_gained: number;
-  watchers: number;
   open_issues: number;
   contributors_count: number;
   commit_count_week: number;
@@ -68,7 +67,6 @@ export interface RepoDetail extends RepoCard {
   homepage_url: string | null;
   is_archived: boolean;
   is_fork: boolean;
-  latest_watchers: number;
   github_pushed_at: string | null;
   last_synced_at: string | null;
   latest_insight: Insight | null;
@@ -98,6 +96,8 @@ export interface DashboardData {
   ai_ecosystem: RepoCard[];
   new_entrants: RepoCard[];
   generated_at: string;
+  data_since?: string | null;
+  snapshot_days?: number;
 }
 
 // ─── Trends / Radar ──────────────────────────────────────────────────────────

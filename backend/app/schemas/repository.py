@@ -48,7 +48,6 @@ class DailyMetricOut(BaseModel):
     forks_total: int
     stars_gained: int
     forks_gained: int
-    watchers: int
     open_issues: int
     contributors_count: int
     commit_count_week: int
@@ -102,7 +101,6 @@ class RepoDetail(BaseModel):
     is_fork: bool
     latest_stars: int
     latest_forks: int
-    latest_watchers: int
     stars_gained_today: int
     stars_gained_week: int
     momentum_score: float
@@ -141,6 +139,8 @@ class DashboardResponse(BaseModel):
     ai_ecosystem: list[RepoCard]
     new_entrants: list[RepoCard]
     generated_at: datetime
+    data_since: str | None = None
+    snapshot_days: int = 0
 
 
 # ─── Trends ────────────────────────────────────────────────────────────────────

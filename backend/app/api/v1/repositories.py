@@ -143,7 +143,6 @@ async def get_repository(repo_id: int, db: AsyncSession = Depends(get_db)):
         "is_fork": repo.is_fork,
         "latest_stars": repo.latest_stars,
         "latest_forks": repo.latest_forks,
-        "latest_watchers": repo.latest_watchers,
         "stars_gained_today": repo.stars_gained_today,
         "stars_gained_week": repo.stars_gained_week,
         "momentum_score": float(repo.momentum_score or 0),
@@ -180,7 +179,7 @@ async def get_repository_metrics(
     daily_result = await db.execute(
         text("""
         SELECT date, stars_total, forks_total, stars_gained, forks_gained,
-               watchers, open_issues, contributors_count, commit_count_week
+               open_issues, contributors_count, commit_count_week
         FROM daily_metrics
         WHERE repository_id = :rid
           AND date >= CURRENT_DATE - :days
