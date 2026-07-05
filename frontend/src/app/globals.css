@@ -414,17 +414,16 @@ html[data-theme="paper"] {
   .tabs a { white-space:nowrap; padding:5px 12px; font-size:11px; }
   .tabs a.on { background:color-mix(in srgb,var(--ember) 15%,transparent); border-radius:8px; }
   .tabs a.on::after { display:none; }
-  /* keep the search button (compact, no ⌘K hint) but drop the redundant Search tab */
-  .kbd span { display:none; }
-  .tabs a[href="/search"] { display:none; }
+  /* search is reachable via the Search tab; hide the redundant white header button */
+  .kbd { display:none; }
   /* centered footer */
   .foot { flex-direction:column; align-items:center; text-align:center; gap:8px; }
   /* smaller ranking score so it sits under the name cleanly */
   .trendrow .tsc .v { font-size:26px; }
-  /* search box: sized right for a phone (was 21px serif — overflowed) */
-  .searchbox { margin-top:20px; }
-  .searchbox input { font-size:16px; padding:15px 16px 15px 46px; }
-  .searchbox .ico { left:16px; font-size:17px; }
+  /* search box: compact on phones (was a huge 21px serif field that overflowed) */
+  .searchbox { margin-top:18px; }
+  .searchbox input { font-size:15px; padding:12px 14px 12px 40px; border-radius:10px; }
+  .searchbox .ico { left:14px; font-size:16px; }
   /* tidy the stat grid: single center divider, smaller numbers */
   .strip .cell, .metrics .mc { border-right:none; padding:14px 6px; }
   .strip .cell:nth-child(odd), .metrics .mc:nth-child(odd) { border-right:1px solid var(--rule); }
