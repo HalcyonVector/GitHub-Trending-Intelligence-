@@ -1,5 +1,6 @@
 import ssl
 from collections.abc import AsyncGenerator
+from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
@@ -37,6 +38,9 @@ else:
             "ssl": _ssl_ctx,
             "statement_cache_size": 0,          # PgBouncer transaction-mode safe
             "prepared_statement_cache_size": 0,
+            # Unique statement names so they never collide on a pooler-reused
+            # server connection (fixes intermittent DuplicatePreparedStatementError).
+            "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4()}__",
         },
     )
 
