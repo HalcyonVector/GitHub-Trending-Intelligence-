@@ -98,7 +98,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="wrap">
           <div className="masthead">
             <Link href="/" className="brand">
-              <span className="dot" />
               GitHub Trending <em>Intelligence</em>
             </Link>
             <div className="issue" suppressHydrationWarning>
