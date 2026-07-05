@@ -89,7 +89,7 @@ Then go to the **Actions** tab → **refresh-data** → **Run workflow** to do t
    - `GITHUB_TOKEN` — your PAT
    - `LLM_API_KEY` — your Groq key
    - `FRONTEND_URL` — leave blank for now; you'll set it in step 5
-4. **Apply / Create**. First build takes a few minutes. When live you'll get a URL like `https://gti-api.onrender.com`. Open `https://gti-api.onrender.com/docs` to confirm it's up.
+4. **Apply / Create**. First build takes a few minutes. When live you'll get a URL like `https://gti-api.onrender.com`. Open `https://gti-api.onrender.com/health` to confirm it's up (it returns `{"status":"ok"}`); interactive API docs are at `/api/docs`.
 
 ---
 
