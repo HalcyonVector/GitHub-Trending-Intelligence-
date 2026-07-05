@@ -400,7 +400,7 @@ html[data-theme="paper"] {
 @media (max-width:560px) {
   .wrap { padding:0 16px; }
   .catgrid { grid-template-columns:1fr; }
-  .masthead { flex-direction:column; align-items:flex-start; gap:2px; padding:18px 0 6px; }
+  .masthead { flex-direction:column; align-items:flex-start; gap:2px; padding:16px 0 10px; }
   /* wordmark: flow as normal text (not flex) so it doesn't split awkwardly */
   .brand { display:block; font-size:20px; letter-spacing:-.02em; line-height:1.15; }
   .brand em { display:inline; }
@@ -409,7 +409,7 @@ html[data-theme="paper"] {
   /* breathing room between the sticky header and the page content */
   main.wrap { padding-top:22px; }
   /* clearer tabs: pill on the active one, hide the ⌘K search (no keyboard on phones) */
-  .tabs { padding:8px 0; }
+  .tabs { padding:10px 0; }
   .tabs a { white-space:nowrap; padding:7px 12px; font-size:11px; }
   .tabs a.on { background:color-mix(in srgb,var(--ember) 15%,transparent); border-radius:8px; }
   .tabs a.on::after { display:none; }
@@ -418,8 +418,10 @@ html[data-theme="paper"] {
   .foot { flex-direction:column; align-items:center; text-align:center; gap:8px; }
   /* smaller ranking score so it sits under the name cleanly */
   .trendrow .tsc .v { font-size:26px; }
-  /* separate the tabs from the wordmark so the header doesn't feel cramped */
-  .tabs { margin-top:8px; }
+  /* search box: sized right for a phone (was 21px serif — overflowed) */
+  .searchbox { margin-top:20px; }
+  .searchbox input { font-size:16px; padding:15px 16px 15px 46px; }
+  .searchbox .ico { left:16px; font-size:17px; }
   /* tidy the stat grid: single center divider, smaller numbers */
   .strip .cell, .metrics .mc { border-right:none; padding:14px 6px; }
   .strip .cell:nth-child(odd), .metrics .mc:nth-child(odd) { border-right:1px solid var(--rule); }
