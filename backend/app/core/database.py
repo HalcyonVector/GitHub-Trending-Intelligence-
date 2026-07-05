@@ -1,3 +1,4 @@
+import ssl
 from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -22,13 +23,18 @@ if _is_local:
         echo=settings.DEBUG,
     )
 else:
+    # Encrypt the connection but don't verify the cert chain — Supabase's pooler
+    # presents a chain that isn't in the default CA store (sslmode=require behaviour).
+    _ssl_ctx = ssl.create_default_context()
+    _ssl_ctx.check_hostname = False
+    _ssl_ctx.verify_mode = ssl.CERT_NONE
     engine = create_async_engine(
         _url,
         poolclass=NullPool,           # external pooler owns the connections
         pool_pre_ping=True,
         echo=settings.DEBUG,
         connect_args={
-            "ssl": True,
+            "ssl": _ssl_ctx,
             "statement_cache_size": 0,          # PgBouncer transaction-mode safe
             "prepared_statement_cache_size": 0,
         },
