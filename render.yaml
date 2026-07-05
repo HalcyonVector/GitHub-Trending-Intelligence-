@@ -12,7 +12,7 @@ services:
     dockerContext: backend
     # Bind to the port Render assigns instead of the Dockerfile's fixed 8000.
     dockerCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
-    healthCheckPath: /docs
+    healthCheckPath: /health
     envVars:
       - key: DATABASE_URL        # Supabase connection string (postgresql+asyncpg://...)
         sync: false

@@ -34,9 +34,11 @@ jobs:
       - name: Run pipeline (ingest + score + aggregate + insights)
         working-directory: backend
         env:
-          # GITHUB_TOKEN is a reserved name in Actions, so the PAT is stored as GH_PAT
-          # and mapped to the env var the app expects.
-          GITHUB_TOKEN: ${{ secrets.GH_PAT }}
+          # The app expects GITHUB_TOKEN. You can optionally store a personal access
+          # token as the secret GH_PAT (5,000 req/hr); if you don't, this falls back to
+          # the built-in Actions token (~1,000 req/hr) — enough for one run every 6h.
+          # (GITHUB_TOKEN is a reserved secret name, hence GH_PAT.)
+          GITHUB_TOKEN: ${{ secrets.GH_PAT || github.token }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           AI_PROVIDER: ${{ vars.AI_PROVIDER || 'groq' }}
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
