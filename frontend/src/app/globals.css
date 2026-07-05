@@ -394,13 +394,14 @@ html[data-theme="paper"] {
   .trendrow .tspark { display:none !important; }
   .trendrow .tsc { grid-column:2; text-align:left; min-width:0; }
   .trendrow .td { max-width:none; }
-  .tabs { overflow-x:auto; }
+  .tabs { overflow-x:auto; scrollbar-width:none; -ms-overflow-style:none; }
+  .tabs::-webkit-scrollbar { display:none; }
 }
 
 @media (max-width:560px) {
   .wrap { padding:0 16px; }
   .catgrid { grid-template-columns:1fr; }
-  .masthead { flex-direction:column; align-items:flex-start; gap:2px; padding:24px 0 18px; }
+  .masthead { flex-direction:column; align-items:flex-start; gap:2px; padding:30px 0 22px; }
   /* wordmark: flow as normal text (not flex) so it doesn't split awkwardly */
   .brand { display:block; font-size:20px; letter-spacing:-.02em; line-height:1.15; }
   .brand em { display:inline; }
