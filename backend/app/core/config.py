@@ -75,6 +75,18 @@ class Settings(BaseSettings):
     # AI insight pacing (free-tier rate limits)
     AI_INSIGHT_DELAY_SEC: float = 1.2     # gap between insight calls to respect RPM limits
 
+    # Notifications — fan out to whichever channels are configured (all optional).
+    DISCORD_WEBHOOK_URL: str = ""
+    SLACK_WEBHOOK_URL: str = ""
+    RESEND_API_KEY: str = ""              # https://resend.com free tier
+    ALERT_EMAIL_TO: str = ""
+    ALERT_EMAIL_FROM: str = "GTI <onboarding@resend.dev>"  # Resend's shared test sender
+
+    # Breakout detection: young + accelerating repos
+    BREAKOUT_MAX_AGE_DAYS: int = 30
+    BREAKOUT_MIN_MOMENTUM: float = 30.0
+    DIGEST_TOP_N: int = 10
+
 
 @lru_cache
 def get_settings() -> Settings:

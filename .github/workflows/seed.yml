@@ -1,0 +1,28 @@
+name: seed-momentum
+
+# One-off helper: fabricates a synthetic "yesterday" snapshot (~94% of today's
+# stars) so momentum, velocity, and leaderboards show non-zero numbers immediately
+# instead of waiting for the next daily ingest. Safe to re-run. Once real second-day
+# snapshots accumulate, the synthetic row ages out on its own.
+on:
+  workflow_dispatch:
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+      - name: Seed synthetic prior-day snapshot and recompute momentum
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python scripts/seed_demo.py
