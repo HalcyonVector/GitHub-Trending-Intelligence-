@@ -152,40 +152,49 @@ async def compute_weekly_metrics(session: AsyncSession, week_start: date) -> int
     )
     repo_ids = [r[0] for r in result.fetchall()]
 
-    # Compute momentum score for each
-    for repo_id in repo_ids:
-        row = await session.execute(
+    if not repo_ids:
+        await session.commit()
+        return 0
+
+    # Score all repos in Python from a single SELECT, then bulk-update.
+    # (Was a per-repo loop of ~3 queries each — thousands of round-trips to a
+    # remote DB. Now: one SELECT + two executemany UPDATEs.)
+    rows = (
+        await session.execute(
             text("""
-            SELECT w.stars_gained, w.forks_gained, w.new_contributors,
+            SELECT w.repository_id, w.stars_gained, w.forks_gained, w.new_contributors,
                    w.commit_activity, w.issues_opened,
-                   EXTRACT(EPOCH FROM (NOW() - r.github_created_at))/86400 as age_days
+                   EXTRACT(EPOCH FROM (NOW() - r.github_created_at))/86400 AS age_days
             FROM weekly_metrics w
             JOIN repositories r ON r.id = w.repository_id
-            WHERE w.repository_id = :rid AND w.week_start = :ws
+            WHERE w.week_start = :ws
             """),
-            {"rid": repo_id, "ws": week_start},
+            {"ws": week_start},
         )
-        m = row.fetchone()
-        if m:
-            score = compute_momentum_score(
-                m.stars_gained, m.forks_gained, m.new_contributors or 0,
-                m.commit_activity or 0, m.issues_opened or 0,
-                int(m.age_days or 0),
-            )
-            await session.execute(
-                text("""
-                UPDATE weekly_metrics SET momentum_score = :score
-                WHERE repository_id = :rid AND week_start = :ws
-                """),
-                {"score": score, "rid": repo_id, "ws": week_start},
-            )
-            # Also update denormalized momentum on repository
-            await session.execute(
-                text("UPDATE repositories SET momentum_score = :score, stars_gained_week = "
-                     "(SELECT stars_gained FROM weekly_metrics WHERE repository_id = :rid AND week_start = :ws) "
-                     "WHERE id = :rid"),
-                {"score": score, "rid": repo_id, "ws": week_start},
-            )
+    ).fetchall()
+
+    weekly_updates = []
+    repo_updates = []
+    for m in rows:
+        score = compute_momentum_score(
+            m.stars_gained, m.forks_gained, m.new_contributors or 0,
+            m.commit_activity or 0, m.issues_opened or 0,
+            int(m.age_days or 0),
+        )
+        weekly_updates.append({"score": score, "rid": m.repository_id, "ws": week_start})
+        repo_updates.append({"score": score, "sw": m.stars_gained or 0, "rid": m.repository_id})
+
+    if weekly_updates:
+        await session.execute(
+            text("UPDATE weekly_metrics SET momentum_score = :score "
+                 "WHERE repository_id = :rid AND week_start = :ws"),
+            weekly_updates,
+        )
+        await session.execute(
+            text("UPDATE repositories SET momentum_score = :score, stars_gained_week = :sw "
+                 "WHERE id = :rid"),
+            repo_updates,
+        )
 
     await session.commit()
     return len(repo_ids)
