@@ -167,14 +167,16 @@ html[data-theme="paper"] {
 
   /* ---- leaderboards ---- */
   .cols { display:grid; grid-template-columns:1fr 1fr; gap:46px; }
-  .lentry { display:grid; grid-template-columns:24px 1fr auto; gap:14px; align-items:center; padding:14px 0;
+  .lentry { display:grid; grid-template-columns:24px minmax(0,1fr) auto; gap:14px; align-items:center; padding:14px 0;
     border-bottom:1px solid var(--rule); cursor:pointer; transition:.22s var(--ease); }
+  .lentry > div { min-width:0; }
   .lentry:hover { padding-left:6px; }
   .lentry .rk { font-family:var(--font-fraunces),serif; font-size:20px; font-weight:900; color:var(--dim2); }
   .lentry:hover .rk { color:var(--ember); }
-  .lentry .nm { font-family:var(--font-fraunces),serif; font-size:17px; font-weight:500; line-height:1.15; }
+  .lentry .nm { font-family:var(--font-fraunces),serif; font-size:17px; font-weight:500; line-height:1.15;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .lentry .nm .lang { font-family:var(--font-mono),monospace; font-size:10px; color:var(--dim2); margin-left:8px; letter-spacing:.04em; }
-  .lentry .ds { font-size:12.5px; color:var(--dim); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:38ch; }
+  .lentry .ds { font-size:12.5px; color:var(--dim); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:none; }
   .lentry .rt { text-align:right; }
   .lentry .gv { font-family:var(--font-mono),monospace; font-size:14px; font-weight:700; color:var(--gain); }
   .lentry .gl { font-family:var(--font-mono),monospace; font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--dim2); }
@@ -203,7 +205,7 @@ html[data-theme="paper"] {
   .panelrow { display:grid; grid-template-columns:1fr 1fr; gap:46px; }
   .mini { display:flex; align-items:center; gap:12px; padding:11px 0; border-bottom:1px solid var(--rule); cursor:pointer; transition:.2s var(--ease); }
   .mini:hover { padding-left:5px; }
-  .mini .mn { font-family:var(--font-fraunces),serif; font-size:15px; font-weight:500; flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mini .mn { font-family:var(--font-fraunces),serif; font-size:15px; font-weight:500; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .mini:hover .mn { color:var(--ember); }
   .badge-new { font-family:var(--font-mono),monospace; font-size:8.5px; letter-spacing:.1em; color:var(--plasma);
     border:1px solid var(--plasmaDim); border-radius:4px; padding:2px 6px; text-transform:uppercase; }
