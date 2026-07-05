@@ -428,10 +428,13 @@ html[data-theme="paper"] {
   .searchbox { margin-top:18px; }
   .searchbox input { font-size:15px; padding:12px 14px 12px 40px; border-radius:10px; }
   .searchbox .ico { left:14px; font-size:16px; }
-  /* tidy the stat grid: single center divider, smaller numbers */
-  .strip .cell, .metrics .mc { border-right:none; padding:14px 6px; }
+  /* tidy the stat grid: centered content, single center divider, smaller numbers */
+  .strip .cell, .metrics .mc { border-right:none; padding:14px 6px; text-align:center; }
   .strip .cell:nth-child(odd), .metrics .mc:nth-child(odd) { border-right:1px solid var(--rule); }
   .strip .cv, .metrics .mv { font-size:24px; }
+  /* center the compact list rows (New Entrants / AI Ecosystem) instead of edge-aligning */
+  .mini { justify-content:center; gap:10px; }
+  .mini .mn { flex:0 1 auto; }
   /* trim the dead space at the bottom of the page */
   main.wrap { padding-bottom:34px !important; }
   .foot { margin-top:34px; }
