@@ -432,9 +432,8 @@ html[data-theme="paper"] {
   .strip .cell, .metrics .mc { border-right:none; padding:14px 6px; text-align:center; }
   .strip .cell:nth-child(odd), .metrics .mc:nth-child(odd) { border-right:1px solid var(--rule); }
   .strip .cv, .metrics .mv { font-size:24px; }
-  /* center the compact list rows (New Entrants / AI Ecosystem) instead of edge-aligning */
-  .mini { justify-content:center; gap:10px; }
-  .mini .mn { flex:0 1 auto; }
+  /* center the compact-list sections (New Entrants / AI Ecosystem) as a narrower block */
+  .panelrow > div { width:100%; max-width:300px; margin-inline:auto; }
   /* trim the dead space at the bottom of the page */
   main.wrap { padding-bottom:34px !important; }
   .foot { margin-top:34px; }
