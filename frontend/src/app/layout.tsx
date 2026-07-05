@@ -25,6 +25,10 @@ const jetbrains = JetBrains_Mono({
   display: "swap",
 });
 
+// Render every page dynamically from the live API rather than a build-time cache,
+// so momentum/leaderboards reflect the latest 6-hourly data (no stale ISR snapshot).
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:2326"),
   title: {
