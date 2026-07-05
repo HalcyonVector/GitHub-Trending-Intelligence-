@@ -438,21 +438,32 @@ async def _generate_ai_insights() -> None:
     now = datetime.now(timezone.utc)
 
     async with AsyncSessionLocal() as session:
-        # Get top repos by momentum without a fresh insight
+        # Get top repos by momentum without a fresh insight. One row per repo:
+        # the category is pulled via a LATERAL (highest-confidence tag) instead of
+        # a plain join, so a repo tagged in several categories is not processed
+        # multiple times, and "no fresh insight" is a NOT EXISTS to avoid fan-out.
         result = await session.execute(
             text("""
             SELECT r.id, r.full_name, r.description, r.language, r.topics,
                    r.latest_stars, r.stars_gained_week, r.latest_forks,
                    r.github_created_at,
-                   tc.name as category_name
+                   c.name as category_name
             FROM repositories r
-            LEFT JOIN repository_categories rc ON rc.repository_id = r.id
-            LEFT JOIN technology_categories tc ON tc.id = rc.category_id
-            LEFT JOIN insight_reports ir ON ir.subject_id = r.id
-                AND ir.report_type = 'repository'
-                AND ir.expires_at > NOW()
-            WHERE ir.id IS NULL
-              AND r.is_archived = FALSE
+            LEFT JOIN LATERAL (
+                SELECT tc.name
+                FROM repository_categories rc
+                JOIN technology_categories tc ON tc.id = rc.category_id
+                WHERE rc.repository_id = r.id
+                ORDER BY rc.confidence DESC NULLS LAST
+                LIMIT 1
+            ) c ON TRUE
+            WHERE r.is_archived = FALSE
+              AND NOT EXISTS (
+                  SELECT 1 FROM insight_reports ir
+                  WHERE ir.subject_id = r.id
+                    AND ir.report_type = 'repository'
+                    AND ir.expires_at > NOW()
+              )
             ORDER BY r.momentum_score DESC
             LIMIT :limit
             """),

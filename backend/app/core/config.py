@@ -67,13 +67,13 @@ class Settings(BaseSettings):
 
     # Ingestion
     INGEST_BATCH_SIZE: int = 100          # repos per cron run to deep-fetch
-    TOP_REPOS_FOR_INSIGHTS: int = 50      # top N repos to generate AI insights for
+    TOP_REPOS_FOR_INSIGHTS: int = 20      # top N repos to generate AI insights for (per run; fills in over cycles)
     SIGNALS_TOP_N: int = 200              # repos to fetch contributor/commit velocity for
     SIGNALS_CONCURRENCY: int = 8          # parallel GitHub requests when fetching signals
     DATA_RETENTION_DAYS: int = 90         # prune daily_metrics older than this (Supabase 500MB)
 
     # AI insight pacing (free-tier rate limits)
-    AI_INSIGHT_DELAY_SEC: float = 1.2     # gap between insight calls to respect RPM limits
+    AI_INSIGHT_DELAY_SEC: float = 3.0     # gap between insight calls to stay under ~20 rpm (Groq free tier caps ~30)
 
     # Notifications — fan out to whichever channels are configured (all optional).
     DISCORD_WEBHOOK_URL: str = ""
