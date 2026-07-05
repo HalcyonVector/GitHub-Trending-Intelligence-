@@ -121,3 +121,17 @@ export const getSparklines = (ids: number[]): Promise<{ sparklines: Record<strin
   fetchJSON<{ sparklines: Record<string, number[]> }>("/analytics/sparklines", {
     ids: ids.join(","),
   });
+
+// ─── Breakouts (new & accelerating repos) ──────────────────────────────────────
+export interface Breakout {
+  id: number;
+  full_name: string;
+  name: string;
+  language: string | null;
+  latest_stars: number;
+  stars_gained_week: number;
+  momentum_score: number;
+  age_days: number | null;
+}
+export const getBreakouts = (): Promise<{ breakouts: Breakout[] }> =>
+  fetchJSON<{ breakouts: Breakout[] }>("/analytics/breakouts");

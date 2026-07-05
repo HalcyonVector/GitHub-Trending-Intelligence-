@@ -2,6 +2,8 @@
 Analytics endpoints: language leaderboard and per-repo sparkline series.
 """
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -81,3 +83,55 @@ async def get_sparklines(ids: str = Query(...), db: AsyncSession = Depends(get_d
         spark.setdefault(str(d["repository_id"]), []).append(int(d["stars_gained"] or 0))
 
     return {"sparklines": spark}
+
+
+@router.get("/breakouts")
+async def get_breakouts(db: AsyncSession = Depends(get_db)):
+    """Young (< N days old) and accelerating (momentum >= threshold) repositories."""
+    cache_key = "analytics:breakouts:v1"
+    cached = await cache_get(cache_key)
+    if cached:
+        return cached
+
+    result = await db.execute(
+        text(
+            """
+            SELECT id, full_name, name, language, latest_stars,
+                   stars_gained_week, momentum_score, github_created_at
+            FROM repositories
+            WHERE is_archived = FALSE
+              AND github_created_at >= NOW() - (:max_age * INTERVAL '1 day')
+              AND momentum_score >= :min_mom
+            ORDER BY momentum_score DESC
+            LIMIT :limit
+            """
+        ),
+        {
+            "max_age": settings.BREAKOUT_MAX_AGE_DAYS,
+            "min_mom": settings.BREAKOUT_MIN_MOMENTUM,
+            "limit": settings.DIGEST_TOP_N,
+        },
+    )
+
+    now = datetime.now(timezone.utc)
+    breakouts = []
+    for row in result.fetchall():
+        d = dict(row._mapping)
+        created = d.get("github_created_at")
+        age_days = max(0, (now - created).days) if created else None
+        breakouts.append(
+            {
+                "id": d["id"],
+                "full_name": d["full_name"],
+                "name": d["name"],
+                "language": d["language"],
+                "latest_stars": int(d["latest_stars"] or 0),
+                "stars_gained_week": int(d["stars_gained_week"] or 0),
+                "momentum_score": round(float(d["momentum_score"] or 0), 1),
+                "age_days": age_days,
+            }
+        )
+
+    response = {"breakouts": breakouts}
+    await cache_set(cache_key, response, settings.CACHE_TTL_TRENDS)
+    return response

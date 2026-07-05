@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { getDashboard } from "@/lib/api";
+import { getDashboard, getBreakouts, type Breakout } from "@/lib/api";
 import type { CategoryMomentum, DashboardData, RepoCard } from "@/lib/types";
 import { formatStat, formatDelta } from "@/lib/utils";
 import { Sparkline } from "@/components/shared/Sparkline";
@@ -22,6 +22,13 @@ export function DashboardClient({ initialData }: Props) {
     initialData: initialData ?? undefined,
     staleTime: 5 * 60_000,
   });
+
+  const { data: breakoutData } = useQuery({
+    queryKey: ["breakouts"],
+    queryFn: getBreakouts,
+    staleTime: 5 * 60_000,
+  });
+  const breakouts = breakoutData?.breakouts ?? [];
 
   const lead = data?.top_gaining_week?.[0];
   const second = data?.top_gaining_week?.[1];
@@ -209,6 +216,30 @@ export function DashboardClient({ initialData }: Props) {
         ))}
       </div>
 
+      {breakouts.length > 0 && (
+        <>
+          <div className="rulehead">
+            Breakouts <span className="meta">new &amp; accelerating · &lt; 30d old</span>
+          </div>
+          <div className="cols">
+            <div>
+              {breakouts.slice(0, Math.ceil(breakouts.length / 2)).map((b, i) => (
+                <BreakoutEntry key={b.id} rank={i + 1} b={b} />
+              ))}
+            </div>
+            <div>
+              {breakouts.slice(Math.ceil(breakouts.length / 2)).map((b, i) => (
+                <BreakoutEntry
+                  key={b.id}
+                  rank={i + 1 + Math.ceil(breakouts.length / 2)}
+                  b={b}
+                />
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
       <div className="panelrow" style={{ marginTop: 12 }}>
         <div>
           <div className="rulehead">
@@ -358,8 +389,33 @@ function LeaderEntry({
             <Sparkline values={spark} width={72} height={20} color="var(--gain)" />
           </div>
         )}
-        <div className="gv">{formatDelta(metric)}</div>
+        <div className="gv" style={metric ? undefined : { color: "var(--dim2)" }}>
+          {metric ? formatDelta(metric) : "—"}
+        </div>
         <div className="gl">stars/{label}</div>
+      </div>
+    </div>
+  );
+}
+
+function BreakoutEntry({ rank, b }: { rank: number; b: Breakout }) {
+  const router = useRouter();
+  return (
+    <div className="lentry" onClick={() => router.push(`/repos/${b.id}`)}>
+      <div className="rk">{rank}</div>
+      <div>
+        <div className="nm">
+          {b.name}
+          {b.language && <span className="lang">{b.language}</span>}
+          {b.age_days != null && <span className="badge-new">{b.age_days}d</span>}
+        </div>
+        <div className="ds">{b.full_name}</div>
+      </div>
+      <div className="rt">
+        <div className="gv" style={{ color: "var(--ember)" }}>
+          {Math.round(b.momentum_score)}
+        </div>
+        <div className="gl">momentum</div>
       </div>
     </div>
   );
@@ -376,7 +432,9 @@ function CategoryCard({ c }: { c: CategoryMomentum }) {
         <span>{c.repo_count.toLocaleString()} repos</span>
       </div>
       <div className="score">{Math.round(c.momentum_score)}</div>
-      <div className="sub">{formatDelta(c.stars_gained_week)} stars / wk</div>
+      <div className="sub" style={c.stars_gained_week ? undefined : { color: "var(--dim2)" }}>
+        {c.stars_gained_week ? `${formatDelta(c.stars_gained_week)} stars / wk` : "— stars / wk"}
+      </div>
       <div className="bar">
         <i style={{ width: `${Math.min(100, Math.round(c.momentum_score))}%` }} />
       </div>
