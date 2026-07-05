@@ -396,9 +396,12 @@ html[data-theme="paper"] {
 @media (max-width:560px) {
   .wrap { padding:0 16px; }
   .catgrid { grid-template-columns:1fr; }
-  .masthead { flex-direction:column; align-items:flex-start; gap:4px; }
-  .issue { text-align:left; }
+  .masthead { flex-direction:column; align-items:flex-start; gap:2px; padding:12px 0 8px; }
   /* wordmark: flow as normal text (not flex) so it doesn't split awkwardly */
-  .brand { display:block; font-size:22px; }
-  .tabs a { white-space:nowrap; }
+  .brand { display:block; font-size:20px; letter-spacing:-.02em; line-height:1.15; }
+  .brand em { display:inline; }
+  /* drop the verbose "Vol. I · Signal from…" line on phones */
+  .issue { display:none; }
+  .tabs { padding:6px 0; }
+  .tabs a { white-space:nowrap; padding:6px 10px; font-size:11px; }
 }
