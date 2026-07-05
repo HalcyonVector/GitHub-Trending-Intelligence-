@@ -1,0 +1,18 @@
+name: keep-warm
+
+# Pings the Render free API so it doesn't spin down after 15 min idle (which causes
+# a ~50s cold start on the next visitor). Best-effort — GitHub's scheduler can be
+# delayed a few minutes, but this keeps it warm most of the time. Free on public repos.
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # every 10 minutes
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health endpoint
+        run: |
+          curl -fsS --max-time 70 \
+            "${{ vars.RENDER_HEALTH_URL || 'https://gti-api-ead5.onrender.com/health' }}" || true

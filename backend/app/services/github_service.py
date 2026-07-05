@@ -3,6 +3,7 @@ GitHub API service.
 Handles all communication with GitHub REST API with rate limiting and retry.
 """
 
+import asyncio
 import logging
 from datetime import datetime
 from typing import Any
@@ -34,17 +35,24 @@ def _parse_dt(value: str | None) -> datetime | None:
 MONITORED_TOPICS = [
     "ai-agent", "agents", "mcp", "model-context-protocol",
     "llm", "large-language-models", "langchain", "llamaindex",
-    "vector-database", "embeddings", "rag",
-    "code-generation", "code-completion",
-    "mlops", "inference", "model-serving",
-    "developer-tools", "cli", "devtools",
-    "opentelemetry", "observability",
+    "vector-database", "embeddings", "rag", "fine-tuning",
+    "code-generation", "code-completion", "ai-coding", "copilot",
+    "mlops", "inference", "model-serving", "llm-inference",
+    "developer-tools", "cli", "devtools", "productivity",
+    "opentelemetry", "observability", "monitoring",
+    "kubernetes", "terraform", "docker", "infrastructure",
+    "database", "sql", "vector-search",
+    "security", "cybersecurity", "authentication",
+    "react", "nextjs", "svelte", "frontend",
+    "fastapi", "backend", "api",
+    "data-engineering", "etl", "data-pipeline",
+    "fintech", "payments",
 ]
 
 # Languages to track for trending
 MONITORED_LANGUAGES = [
     "Python", "TypeScript", "JavaScript", "Rust", "Go",
-    "Java", "C++", "C#", "Ruby",
+    "Java", "C++", "C#", "Ruby", "Swift", "Kotlin", "Zig",
 ]
 
 
@@ -151,9 +159,15 @@ class GitHubService:
             logger.warning("Failed to get commit activity for %s/%s: %s", owner, repo, e)
             return 0
 
+    # GitHub's Search API allows ~30 requests/minute regardless of token. Pace each
+    # search so the whole (now larger) topic/language sweep stays under that limit
+    # instead of the tail getting rate-limited and returning nothing.
+    _SEARCH_SPACING_SEC = 2.1
+
     async def fetch_trending_by_topic(self, topic: str, days_pushed: int = 1) -> list[dict]:
         """Fetch repos that match a topic and were pushed recently."""
         from datetime import date, timedelta
+        await asyncio.sleep(self._SEARCH_SPACING_SEC)
         since = (date.today() - timedelta(days=days_pushed)).isoformat()
         query = f"topic:{topic} pushed:>={since}"
         try:
@@ -166,6 +180,7 @@ class GitHubService:
     async def fetch_trending_by_language(self, language: str, days_pushed: int = 7) -> list[dict]:
         """Fetch top repos for a language updated recently."""
         from datetime import date, timedelta
+        await asyncio.sleep(self._SEARCH_SPACING_SEC)
         since = (date.today() - timedelta(days=days_pushed)).isoformat()
         query = f"language:{language} pushed:>={since} stars:>100"
         try:

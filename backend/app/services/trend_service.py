@@ -65,16 +65,20 @@ def compute_momentum_score(
 def classify_radar_status(score: float, prev_score: float | None) -> str:
     """Classify into rising / stable / declining based on score and trend."""
     if prev_score is None:
-        if score >= 65:
+        # No week-over-week baseline yet (e.g. first week): judge on absolute
+        # momentum, but don't pessimistically mark healthy mid-range categories
+        # as "declining" just because there's nothing to compare against.
+        if score >= 45:
             return "rising"
-        elif score >= 35:
+        if score >= 18:
             return "stable"
         return "declining"
 
+    # With a baseline, the trend (delta) is the real signal.
     delta = score - prev_score
-    if score >= 65 and delta > 3:
+    if delta > 3:
         return "rising"
-    elif score < 35 or delta < -5:
+    if delta < -3:
         return "declining"
     return "stable"
 
@@ -132,20 +136,24 @@ async def compute_weekly_metrics(session: AsyncSession, week_start: date) -> int
     # Aggregate weekly data
     result = await session.execute(
         text("""
-        INSERT INTO weekly_metrics (repository_id, week_start, stars_gained, forks_gained, commit_activity)
+        INSERT INTO weekly_metrics
+            (repository_id, week_start, stars_gained, forks_gained, new_contributors, commit_activity)
         SELECT
             repository_id,
             :week_start,
             COALESCE(SUM(stars_gained), 0),
             COALESCE(SUM(forks_gained), 0),
+            -- contributors gained across the week (growth within the window)
+            GREATEST(COALESCE(MAX(contributors_count) - MIN(contributors_count), 0), 0),
             COALESCE(MAX(commit_count_week), 0)
         FROM daily_metrics
         WHERE date BETWEEN :week_start AND :week_end
         GROUP BY repository_id
         ON CONFLICT (repository_id, week_start) DO UPDATE
-            SET stars_gained    = EXCLUDED.stars_gained,
-                forks_gained    = EXCLUDED.forks_gained,
-                commit_activity = EXCLUDED.commit_activity
+            SET stars_gained     = EXCLUDED.stars_gained,
+                forks_gained     = EXCLUDED.forks_gained,
+                new_contributors = EXCLUDED.new_contributors,
+                commit_activity  = EXCLUDED.commit_activity
         RETURNING repository_id
         """),
         {"week_start": week_start, "week_end": week_end},

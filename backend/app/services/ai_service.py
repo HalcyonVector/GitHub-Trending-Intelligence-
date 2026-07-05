@@ -140,6 +140,11 @@ async def _via_openai_compatible(prompt: str) -> tuple[str, str, int]:
         if resp.status_code == 400 and "response_format" in resp.text:
             payload.pop("response_format", None)
             resp = await client.post(url, json=payload, headers=headers)
+        # Respect free-tier rate limits: wait the server-suggested time and retry once.
+        if resp.status_code == 429:
+            retry_after = float(resp.headers.get("retry-after") or 5)
+            await asyncio.sleep(min(retry_after, 30))
+            resp = await client.post(url, json=payload, headers=headers)
         resp.raise_for_status()
         data = resp.json()
     content = data["choices"][0]["message"]["content"]

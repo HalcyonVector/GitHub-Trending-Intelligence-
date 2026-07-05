@@ -122,8 +122,8 @@ async def _ingest_trending_repos() -> None:
                 seen_ids.add(r["id"])
                 all_repos.append(github_service.parse_repo_data(r))
 
-    # Collect from top languages
-    for lang in MONITORED_LANGUAGES[:5]:  # limit to top 5 in MVP
+    # Collect from monitored languages
+    for lang in MONITORED_LANGUAGES:
         repos = await github_service.fetch_trending_by_language(lang, days_pushed=7)
         for r in repos:
             if r["id"] not in seen_ids:
@@ -239,7 +239,43 @@ async def _ingest_trending_repos() -> None:
             await session.execute(stmt)
         await session.commit()
 
+        # 4) Richer signals: fetch contributor + weekly-commit counts for the top
+        #    repos by stars and store them on today's metric row. These feed the
+        #    contributor (20%) and commit (10%) weights in the momentum score.
+        #    Bounded concurrency; each getter already degrades to 0 on failure.
+        await _fetch_signals(session, all_repos, gid_to_id, today)
+
     logger.info("Ingestion complete: %d repos upserted", len(all_repos))
+
+
+async def _fetch_signals(session, all_repos, gid_to_id, today) -> None:
+    top = sorted(all_repos, key=lambda r: r.get("latest_stars", 0), reverse=True)
+    top = top[: settings.SIGNALS_TOP_N]
+    if not top:
+        return
+    sem = asyncio.Semaphore(settings.SIGNALS_CONCURRENCY)
+
+    async def _one(rd):
+        rid = gid_to_id.get(rd["github_id"])
+        if rid is None:
+            return None
+        async with sem:
+            contributors = await github_service.get_contributors_count(rd["owner"], rd["name"])
+            commits = await github_service.get_weekly_commit_activity(rd["owner"], rd["name"])
+        return {"rid": rid, "contributors": contributors, "commits": commits, "d": today}
+
+    results = [r for r in await asyncio.gather(*[_one(rd) for rd in top]) if r]
+    for i in range(0, len(results), 500):
+        await session.execute(
+            text(
+                "UPDATE daily_metrics SET contributors_count = :contributors, "
+                "commit_count_week = :commits "
+                "WHERE repository_id = :rid AND date = :d"
+            ),
+            results[i:i + 500],
+        )
+    await session.commit()
+    logger.info("Fetched contributor/commit signals for %d repos", len(results))
 
 
 @celery_app.task(bind=True, max_retries=2)
@@ -377,6 +413,13 @@ async def _aggregate_snapshots() -> None:
     today = date.today()
     async with AsyncSessionLocal() as session:
         await aggregate_category_snapshots(session, today)
+        # Retention: keep daily_metrics under Supabase's free-tier size cap.
+        cutoff = today - timedelta(days=settings.DATA_RETENTION_DAYS)
+        await session.execute(
+            text("DELETE FROM daily_metrics WHERE date < :cutoff"),
+            {"cutoff": cutoff},
+        )
+        await session.commit()
     logger.info("Category snapshots aggregated for %s", today)
 
 
@@ -421,6 +464,8 @@ async def _generate_ai_insights() -> None:
         for row in rows:
             repo_dict = dict(row._mapping)
             insight = await generate_repo_insight(repo_dict)
+            # Space calls to respect the provider's requests-per-minute limit.
+            await asyncio.sleep(settings.AI_INSIGHT_DELAY_SEC)
             if insight is None:
                 continue
 
