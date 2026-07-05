@@ -3,9 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { getDashboard } from "@/lib/api";
-import { cn, formatStat } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { CommandPalette } from "@/components/shared/CommandPalette";
 
 const NAV = [
@@ -80,11 +78,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("gti-toggle-theme", handler);
   }, []);
 
-  const { data } = useQuery({ queryKey: ["dashboard"], queryFn: getDashboard, staleTime: 5 * 60_000 });
-  const today = data?.top_gaining_today?.reduce((s, r) => s + r.stars_gained_today, 0);
-  const week = data?.top_gaining_week?.reduce((s, r) => s + r.stars_gained_week, 0);
-  const hottest = data?.trending_categories?.[0];
-
   const now = new Date();
   const dateLine = now
     .toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric", year: "numeric" })
@@ -125,33 +118,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </button>
             </div>
           </nav>
-        </div>
-        <div className="indexbar">
-          <div className="wrap">
-            <div className="irow">
-              {today !== undefined && (
-                <div className="ix">
-                  Today <span className="up">+{formatStat(today)} ★</span>
-                </div>
-              )}
-              {week !== undefined && (
-                <div className="ix">
-                  This week <span className="up">+{formatStat(week)} ★</span>
-                </div>
-              )}
-              {hottest && (
-                <div className="ix">
-                  Hottest{" "}
-                  <b>
-                    {hottest.category.name} · {Math.round(hottest.momentum_score)}
-                  </b>
-                </div>
-              )}
-              <div className="ix">
-                Refresh <b>every 6h</b>
-              </div>
-            </div>
-          </div>
         </div>
       </header>
 
