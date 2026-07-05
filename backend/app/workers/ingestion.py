@@ -13,11 +13,18 @@ import logging
 from datetime import date, timedelta
 
 from celery import Celery
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
-from app.models.repository import DailyMetric, InsightReport, Repository
+from app.models.repository import (
+    DailyMetric,
+    InsightReport,
+    Repository,
+    RepositoryCategory,
+    TechnologyCategory,
+)
 from app.services.ai_service import build_summary, generate_repo_insight
 from app.services.github_service import (
     MONITORED_LANGUAGES,
@@ -126,63 +133,110 @@ async def _ingest_trending_repos() -> None:
     logger.info("Fetched %d unique repos from GitHub", len(all_repos))
     today = date.today()
 
+    if not all_repos:
+        logger.info("No repos fetched from GitHub; skipping DB write")
+        return
+
+    # Bulk path: a hosted DB (e.g. Supabase) can be far from the runner, so the old
+    # per-repo select/flush/classify loop meant ~7 network round-trips per repo
+    # (thousands total). Here we do a handful of batched INSERT ... ON CONFLICT
+    # statements instead, and commit after each phase so data lands progressively.
+    BATCH = 500
+
     async with AsyncSessionLocal() as session:
-        for repo_data in all_repos:
-            # Upsert repository
-            existing = await session.execute(
-                select(Repository).where(Repository.github_id == repo_data["github_id"])
+        # Load categories ONCE, then classify in Python (was a query per repo).
+        cats = (await session.execute(select(TechnologyCategory))).scalars().all()
+        cat_index = [
+            (
+                c.id,
+                {k.lower() for k in (c.keywords or [])},
+                {t.lower() for t in (c.github_topics or [])},
             )
-            repo = existing.scalar_one_or_none()
+            for c in cats
+        ]
 
-            if repo is None:
-                repo = Repository(**{
-                    k: repo_data[k] for k in repo_data
-                    if k not in ("open_issues",)  # only on daily_metrics
-                })
-                session.add(repo)
-                await session.flush()
-            else:
-                # Update cached star/fork counts
-                for field in ("latest_stars", "latest_forks", "latest_watchers",
-                              "github_updated_at", "github_pushed_at", "topics"):
-                    if field in repo_data:
-                        setattr(repo, field, repo_data[field])
-                from datetime import datetime, timezone
-                repo.last_synced_at = datetime.now(timezone.utc)
+        # 1) Upsert repositories; capture github_id -> id for the child rows.
+        gid_to_id: dict[int, int] = {}
+        repo_rows = [
+            {k: rd[k] for k in rd if k != "open_issues"}  # open_issues -> daily_metrics
+            for rd in all_repos
+        ]
+        for i in range(0, len(repo_rows), BATCH):
+            stmt = pg_insert(Repository).values(repo_rows[i:i + BATCH])
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["github_id"],
+                set_={
+                    "latest_stars": stmt.excluded.latest_stars,
+                    "latest_forks": stmt.excluded.latest_forks,
+                    "latest_watchers": stmt.excluded.latest_watchers,
+                    "github_updated_at": stmt.excluded.github_updated_at,
+                    "github_pushed_at": stmt.excluded.github_pushed_at,
+                    "topics": stmt.excluded.topics,
+                    "last_synced_at": func.now(),
+                },
+            ).returning(Repository.id, Repository.github_id)
+            for rid, gid in (await session.execute(stmt)).all():
+                gid_to_id[gid] = rid
+        await session.commit()
 
-            # Upsert today's daily metric
-            existing_metric = await session.execute(
-                select(DailyMetric).where(
-                    DailyMetric.repository_id == repo.id,
-                    DailyMetric.date == today,
+        # 2) Upsert today's daily metric per repo.
+        metric_rows = []
+        for rd in all_repos:
+            rid = gid_to_id.get(rd["github_id"])
+            if rid is None:
+                continue
+            metric_rows.append({
+                "repository_id": rid,
+                "date": today,
+                "stars_total": rd["latest_stars"],
+                "forks_total": rd["latest_forks"],
+                "watchers": rd["latest_watchers"],
+                "open_issues": rd.get("open_issues", 0),
+                "releases_count": 0,
+            })
+        for i in range(0, len(metric_rows), BATCH):
+            stmt = pg_insert(DailyMetric).values(metric_rows[i:i + BATCH])
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["repository_id", "date"],
+                set_={
+                    "stars_total": stmt.excluded.stars_total,
+                    "forks_total": stmt.excluded.forks_total,
+                    "watchers": stmt.excluded.watchers,
+                },
+            )
+            await session.execute(stmt)
+        await session.commit()
+
+        # 3) Classify in Python, then upsert repository_categories in bulk.
+        cat_rows = []
+        for rd in all_repos:
+            rid = gid_to_id.get(rd["github_id"])
+            if rid is None:
+                continue
+            topics_lower = {t.lower() for t in (rd.get("topics") or [])}
+            language = (rd.get("language") or "").lower()
+            for cid, keywords, github_topics in cat_index:
+                score = (
+                    len(topics_lower & github_topics) * 0.5
+                    + len(topics_lower & keywords) * 0.3
+                    + (0.1 if language and language in keywords else 0.0)
                 )
+                if score > 0:
+                    cat_rows.append({
+                        "repository_id": rid,
+                        "category_id": cid,
+                        "confidence": min(score, 1.0),
+                        "tagged_by": "auto",
+                    })
+        for i in range(0, len(cat_rows), BATCH):
+            stmt = pg_insert(RepositoryCategory).values(cat_rows[i:i + BATCH])
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["repository_id", "category_id"],
+                set_={"confidence": func.greatest(
+                    RepositoryCategory.confidence, stmt.excluded.confidence
+                )},
             )
-            metric = existing_metric.scalar_one_or_none()
-            if metric is None:
-                metric = DailyMetric(
-                    repository_id=repo.id,
-                    date=today,
-                    stars_total=repo_data["latest_stars"],
-                    forks_total=repo_data["latest_forks"],
-                    watchers=repo_data["latest_watchers"],
-                    open_issues=repo_data.get("open_issues", 0),
-                    releases_count=0,
-                )
-                session.add(metric)
-            else:
-                metric.stars_total = repo_data["latest_stars"]
-                metric.forks_total = repo_data["latest_forks"]
-                metric.watchers = repo_data["latest_watchers"]
-
-            await session.flush()
-
-            # Auto-classify categories
-            await classify_repo_categories(
-                session, repo.id,
-                repo_data.get("topics", []),
-                repo_data.get("language"),
-            )
-
+            await session.execute(stmt)
         await session.commit()
 
     logger.info("Ingestion complete: %d repos upserted", len(all_repos))
