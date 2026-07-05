@@ -430,7 +430,7 @@ html[data-theme="paper"] {
   .searchbox .ico { left:14px; font-size:16px; }
   /* tidy the stat grid: centered content (both axes), single divider, smaller numbers */
   .strip .cell, .metrics .mc { border-right:none; padding:16px 6px; text-align:center;
-    display:flex; flex-direction:column; justify-content:center; min-height:82px; }
+    display:flex; flex-direction:column; justify-content:center; align-items:center; min-height:82px; }
   .strip .cell:nth-child(odd), .metrics .mc:nth-child(odd) { border-right:1px solid var(--rule); }
   .strip .cv, .metrics .mv { font-size:24px; }
   /* center the compact-list sections (New Entrants / AI Ecosystem) as a narrower block */
