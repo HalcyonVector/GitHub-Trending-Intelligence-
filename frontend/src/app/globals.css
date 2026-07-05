@@ -390,8 +390,10 @@ html[data-theme="paper"] {
   .catgrid { grid-template-columns:repeat(2,1fr); }
   .strip, .metrics { grid-template-columns:1fr 1fr; }
   .rails { grid-template-columns:1fr; }
-  .trendrow { grid-template-columns:auto 1fr; gap:16px; }
-  .trendrow .tspark { display:none; }
+  .trendrow { grid-template-columns:auto 1fr; gap:8px 16px; align-items:baseline; }
+  .trendrow .tspark { display:none !important; }
+  .trendrow .tsc { grid-column:2; text-align:left; min-width:0; }
+  .trendrow .td { max-width:none; }
   .tabs { overflow-x:auto; }
 }
 
@@ -404,6 +406,16 @@ html[data-theme="paper"] {
   .brand em { display:inline; }
   /* drop the verbose "Vol. I · Signal from…" line on phones */
   .issue { display:none; }
-  .tabs { padding:6px 0; }
-  .tabs a { white-space:nowrap; padding:6px 10px; font-size:11px; }
+  /* breathing room between the sticky header and the page content */
+  main.wrap { padding-top:22px; }
+  /* clearer tabs: pill on the active one, hide the ⌘K search (no keyboard on phones) */
+  .tabs { padding:8px 0; }
+  .tabs a { white-space:nowrap; padding:7px 12px; font-size:11px; }
+  .tabs a.on { background:color-mix(in srgb,var(--ember) 15%,transparent); border-radius:8px; }
+  .tabs a.on::after { display:none; }
+  .kbd { display:none; }
+  /* centered footer */
+  .foot { flex-direction:column; align-items:center; text-align:center; gap:8px; }
+  /* smaller ranking score so it sits under the name cleanly */
+  .trendrow .tsc .v { font-size:26px; }
 }
