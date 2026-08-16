@@ -162,10 +162,32 @@ async def _ingest_trending_repos() -> None:
             for rd in all_repos
         ]
         for i in range(0, len(repo_rows), BATCH):
-            stmt = pg_insert(Repository).values(repo_rows[i:i + BATCH])
+            chunk = repo_rows[i:i + BATCH]
+
+            # A repo can be renamed/transferred on GitHub, or a new repo can reuse
+            # an owner/name combo that used to belong to a different github_id.
+            # Either way, "full_name" collides with a *different* row than the one
+            # ON CONFLICT (github_id) is about to touch, which trips the separate
+            # repositories_full_name_key unique constraint and aborts the insert.
+            # Free up the name first so the real upsert below can't collide.
+            await session.execute(
+                text(
+                    "UPDATE repositories SET full_name = full_name || '-stale-' || id "
+                    "WHERE full_name = ANY(:names) AND github_id != ALL(:gids)"
+                ),
+                {
+                    "names": [r["full_name"] for r in chunk],
+                    "gids": [r["github_id"] for r in chunk],
+                },
+            )
+
+            stmt = pg_insert(Repository).values(chunk)
             stmt = stmt.on_conflict_do_update(
                 index_elements=["github_id"],
                 set_={
+                    "full_name": stmt.excluded.full_name,
+                    "owner": stmt.excluded.owner,
+                    "name": stmt.excluded.name,
                     "latest_stars": stmt.excluded.latest_stars,
                     "latest_forks": stmt.excluded.latest_forks,
                     "latest_watchers": stmt.excluded.latest_watchers,
