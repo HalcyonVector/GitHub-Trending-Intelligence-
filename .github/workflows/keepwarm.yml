@@ -15,4 +15,4 @@ jobs:
       - name: Ping health endpoint
         run: |
           curl -fsS --max-time 70 \
-            "${{ vars.RENDER_HEALTH_URL || 'https://gti-api-ead5.onrender.com/health' }}" || true
+            "${{ vars.RENDER_HEALTH_URL || 'https://gti-api-m8uj.onrender.com/health' }}" || true
