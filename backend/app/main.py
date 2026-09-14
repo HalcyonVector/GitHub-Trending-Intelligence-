@@ -50,5 +50,11 @@ app.include_router(analytics.router, prefix=f"{PREFIX}/analytics", tags=["Analyt
 
 
 @app.get("/health")
+@app.head("/health")
 async def health():
+    # HEAD support matters here: both cron-job.org and UptimeRobot default to
+    # HEAD for their monitors, not GET. A GET-only route 405s a HEAD probe --
+    # which, on a sleeping Render free instance, surfaces as a wake-proxy 503
+    # instead of a clean 405 once awake. Either way, HEAD-only monitoring
+    # never reliably keeps this endpoint warm without this.
     return {"status": "ok", "version": "1.0.0"}
