@@ -130,6 +130,17 @@ async def _ingest_trending_repos() -> None:
                 seen_ids.add(r["id"])
                 all_repos.append(github_service.parse_repo_data(r))
 
+    # Two different github_ids can arrive with the same full_name in one run
+    # (a rename plus a reuse of the old name); only one can own it. Keep the
+    # most-starred and drop the other, or the batched INSERT violates
+    # repositories_full_name_key regardless of the pre-step below.
+    by_name: dict[str, dict] = {}
+    for r in all_repos:
+        cur = by_name.get(r["full_name"])
+        if cur is None or (r.get("latest_stars") or 0) > (cur.get("latest_stars") or 0):
+            by_name[r["full_name"]] = r
+    all_repos = list(by_name.values())
+
     logger.info("Fetched %d unique repos from GitHub", len(all_repos))
     today = date.today()
 
@@ -170,10 +181,20 @@ async def _ingest_trending_repos() -> None:
             # ON CONFLICT (github_id) is about to touch, which trips the separate
             # repositories_full_name_key unique constraint and aborts the insert.
             # Free up the name first so the real upsert below can't collide.
+            # This must also cover rows whose github_id IS in this chunk but
+            # whose *current* name is being claimed by a different incoming
+            # row (two repos swapping/renaming names in one run) -- the old
+            # "github_id != ALL(gids)" filter skipped those and still tripped
+            # repositories_full_name_key (e.g. feder-cr/dots, 2026-10-07).
+            # Any row holding a wanted name is moved aside unless the incoming
+            # row for that name is that same github_id; the upsert then
+            # restores/sets the right names.
             await session.execute(
                 text(
-                    "UPDATE repositories SET full_name = full_name || '-stale-' || id "
-                    "WHERE full_name = ANY(:names) AND github_id != ALL(:gids)"
+                    "UPDATE repositories r SET full_name = r.full_name || '-stale-' || r.id "
+                    "WHERE r.full_name = ANY(:names) AND NOT EXISTS ("
+                    "SELECT 1 FROM unnest(CAST(:gids AS bigint[]), CAST(:names AS text[])) "
+                    "AS t(gid, fn) WHERE t.gid = r.github_id AND t.fn = r.full_name)"
                 ),
                 {
                     "names": [r["full_name"] for r in chunk],
