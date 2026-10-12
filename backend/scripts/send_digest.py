@@ -5,9 +5,10 @@ repos) -- to whichever notification channels are configured. Scheduled via
 
     python scripts/send_digest.py
 
-The email is a styled, Gmail-safe HTML layout (inline CSS, table-based) in the
-app's warm "Dusk" theme, with clickable repo links, momentum + signal badges,
-and a "big story" callout. Discord/Slack get a tidy plaintext version.
+The email is a conventional light newsletter layout (inline CSS, table-based, so
+it renders the same in Gmail / Outlook / Apple Mail) with a prefers-color-scheme
+dark variant. Every repo links to GitHub and to its analysis page on the GTI site.
+Discord/Slack get a tidy plaintext version.
 """
 
 import asyncio
@@ -30,6 +31,7 @@ from app.services.notify_service import any_channel_configured, notify  # noqa: 
 # the primary category, without fanning the row out.
 _SELECT = """
     SELECT
+        r.id,
         r.full_name,
         r.language,
         r.latest_stars,
@@ -76,21 +78,25 @@ _BREAKOUTS_SQL = f"""
     LIMIT :n
 """
 
-# -- App "Dusk" palette (warm dark editorial theme; email-safe solid hex) --
-BODY = "#191410"     # page background
-CARD = "#241d16"     # container / card
-PANEL = "#2b231a"    # raised surface / default pill background
-BORDER = "#4a3f32"   # outer border
-RULE = "#382f26"     # inner dividers
-INK = "#efe7d8"      # primary text
-MUTED = "#b6a893"    # secondary text
-DIM = "#7e6f5c"      # tertiary text
-GAIN = "#8fc46b"     # positive / backed-by-activity
-EMBER = "#ef9367"    # accent / hot momentum
-PLASMA = "#79d6c0"   # secondary accent / age
-LINK = "#ef9367"
-MONO = "'SFMono-Regular',Consolas,'Liberation Mono',Menlo,monospace"
+# -- Email palette: light newsletter; dark variant via prefers-color-scheme --
+BODY = "#f4f5f7"
+CARD = "#ffffff"
+INK = "#111827"
+MUTED = "#4b5563"
+DIM = "#6b7280"
+RULE = "#e5e7eb"
+ACCENT = "#e8590c"
+ACCENT_BG = "#fff4ec"
+GAIN = "#15803d"
+GAIN_BG = "#e7f6ec"
+PILL = "#f1f3f5"
+BLUE = "#2563eb"
 SANS = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
+DEFAULT_SITE = "https://git-hub-trending-intelligence.vercel.app"
+
+
+def _site() -> str:
+    return (settings.FRONTEND_URL or DEFAULT_SITE).rstrip("/")
 
 
 def _signal(m) -> bool:
@@ -150,8 +156,7 @@ def _text_body(breakouts, movers, date_range: str) -> str:
         parts += [f"* {story}", ""]
     parts += ["Breakouts (new & accelerating)", *_lines(breakouts), ""]
     parts += ["Top movers", *_lines(movers)]
-    if settings.FRONTEND_URL:
-        parts += ["", f"Full dashboard: {settings.FRONTEND_URL}"]
+    parts += ["", f"Full dashboard: {_site()}/this-week"]
     return "\n".join(parts)
 
 
@@ -163,63 +168,71 @@ def _esc(s) -> str:
 
 def _pill(label: str, color: str, bg: str) -> str:
     return (
-        f'<span style="display:inline-block;font-family:{MONO};font-size:10px;'
-        f"letter-spacing:.06em;text-transform:uppercase;color:{color};background:{bg};"
-        f'border-radius:20px;padding:2px 9px;line-height:1.7;white-space:nowrap;">{label}</span>'
+        f'<span style="display:inline-block;font-family:{SANS};font-size:11px;font-weight:600;'
+        f'color:{color};background:{bg};border-radius:999px;padding:2px 9px;'
+        f'line-height:18px;white-space:nowrap;">{label}</span>'
     )
 
 
 def _repo_card(i: int, m, is_breakout: bool) -> str:
-    name = _esc(m["full_name"])
-    url = f"https://github.com/{name}"
+    raw_name = m["full_name"]
+    name = _esc(raw_name)
+    gh_url = f"https://github.com/{raw_name}"
+    site_url = f"{_site()}/repos/{m['id']}"
     mom = float(m["momentum_score"])
-    hot = mom >= 65
-    mom_pill = _pill(f"momentum {mom:.0f}", EMBER if hot else "#d8c8b0", "#3a2a1e" if hot else PANEL)
 
-    backed = _signal(m)
-    sig_pill = _pill(
-        "backed by activity" if backed else "star-driven",
-        GAIN if backed else DIM,
-        "#26301c" if backed else PANEL,
-    )
-
-    badges = [mom_pill, sig_pill]
+    badges = [_pill(f"Momentum {mom:.0f}", ACCENT, ACCENT_BG)]
+    if _signal(m):
+        badges.append(_pill("Backed by activity", GAIN, GAIN_BG))
+    else:
+        badges.append(_pill("Star-driven", DIM, PILL))
     if m["category"]:
-        badges.append(_pill(_esc(m["category"]), MUTED, PANEL))
+        badges.append(_pill(_esc(m["category"]), MUTED, PILL))
     if is_breakout:
         age = _age_days(m)
         if age is not None:
-            badges.append(_pill(f"{age}d old", PLASMA, "#173029"))
+            badges.append(_pill(f"{age}d old", BLUE, "#e8f0fe"))
     badges_html = "&nbsp;".join(badges)
 
     week = m["stars_gained_week"] or 0
     today = m["stars_gained_today"] or 0
     stars = m["latest_stars"] or 0
-    lang = _esc(m["language"]) if m["language"] else "-"
+    lang = _esc(m["language"]) if m["language"] else None
     desc = _esc((m["description"] or "").strip())
-    if len(desc) > 110:
-        desc = desc[:107] + "&#8230;"
+    if len(desc) > 140:
+        desc = desc[:137] + "&#8230;"
 
-    stats = (
-        f'<span style="color:{GAIN};font-weight:600;">+{week:,}</span> this week'
-        f'&nbsp;&nbsp;&middot;&nbsp;&nbsp;+{today:,} today'
-        f'&nbsp;&nbsp;&middot;&nbsp;&nbsp;{stars:,}<span style="color:{EMBER};">&#9733;</span>'
-        f'&nbsp;&nbsp;&middot;&nbsp;&nbsp;{lang}'
-    )
+    meta = [
+        f'<strong style="color:{GAIN};">+{week:,}</strong> stars this week',
+        f"+{today:,} today",
+        f"{stars:,} total",
+    ]
+    if lang:
+        meta.append(lang)
+    meta_html = " &nbsp;&bull;&nbsp; ".join(meta)
 
     desc_row = (
-        f'<div style="font-family:{SANS};font-size:12px;color:{MUTED};margin:2px 0 8px;">{desc}</div>'
+        f'<div class="gti-muted" style="font-family:{SANS};font-size:14px;line-height:20px;color:{MUTED};margin:4px 0 0;">{desc}</div>'
         if desc else ""
     )
 
     return f"""
     <tr>
-      <td width="34" valign="top" style="font-family:{MONO};font-size:15px;color:{DIM};padding:14px 6px 14px 18px;">{i}</td>
-      <td valign="top" style="padding:14px 18px 14px 0;border-bottom:1px solid {RULE};">
-        <a href="{url}" style="font-family:{SANS};font-size:15px;font-weight:700;color:{INK};text-decoration:none;">{name}</a>
-        {desc_row}
-        <div style="margin:5px 0 9px;">{badges_html}</div>
-        <div style="font-family:{MONO};font-size:12px;color:{MUTED};">{stats}</div>
+      <td class="gti-rule" style="padding:18px 28px;border-top:1px solid {RULE};">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+          <td width="30" valign="top" class="gti-dim" style="font-family:{SANS};font-size:15px;font-weight:700;color:{DIM};padding-top:1px;">{i}</td>
+          <td valign="top">
+            <a href="{gh_url}" class="gti-ink" style="font-family:{SANS};font-size:17px;font-weight:700;color:{INK};text-decoration:none;">{name}</a>
+            {desc_row}
+            <div style="margin:10px 0 9px;line-height:26px;">{badges_html}</div>
+            <div class="gti-muted" style="font-family:{SANS};font-size:13px;line-height:20px;color:{MUTED};">{meta_html}</div>
+            <div style="font-family:{SANS};font-size:13px;margin-top:9px;">
+              <a href="{gh_url}" style="color:{BLUE};text-decoration:none;font-weight:600;">View on GitHub &rarr;</a>
+              &nbsp;&nbsp;
+              <a href="{site_url}" style="color:{ACCENT};text-decoration:none;font-weight:600;">Full analysis &rarr;</a>
+            </div>
+          </td>
+        </tr></table>
       </td>
     </tr>"""
 
@@ -229,63 +242,83 @@ def _section(title: str, subtitle: str, rows, is_breakout: bool) -> str:
         cards = "".join(_repo_card(i, r._mapping, is_breakout) for i, r in enumerate(rows, 1))
     else:
         cards = (
-            f'<tr><td style="font-family:{SANS};font-size:13px;color:{MUTED};'
-            f'padding:14px 18px;border-bottom:1px solid {RULE};">'
-            f"Nothing here yet -- momentum needs a few days of daily snapshots to build.</td></tr>"
+            f'<tr><td class="gti-muted gti-rule" style="font-family:{SANS};font-size:14px;color:{MUTED};'
+            f'padding:18px 28px;border-top:1px solid {RULE};">'
+            f"Nothing here yet &mdash; momentum needs a few days of daily snapshots to build.</td></tr>"
         )
     return f"""
-    <tr><td style="padding:26px 18px 6px;">
-      <div style="font-family:{SANS};font-size:17px;font-weight:800;color:{INK};letter-spacing:-.01em;">{title}</div>
-      <div style="font-family:{MONO};font-size:11px;color:{EMBER};text-transform:uppercase;letter-spacing:.08em;margin-top:3px;">{subtitle}</div>
+    <tr><td style="padding:30px 28px 14px;">
+      <div class="gti-ink" style="font-family:{SANS};font-size:20px;font-weight:800;color:{INK};">{title}</div>
+      <div class="gti-dim" style="font-family:{SANS};font-size:13px;color:{DIM};margin-top:2px;">{subtitle}</div>
     </td></tr>
-    <tr><td style="padding:0 0 4px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">{cards}</table></td></tr>"""
+    {cards}"""
 
 
 def _html_body(breakouts, movers, date_range: str) -> str:
+    site = _site()
     story = _big_story_line(breakouts, movers)
     story_block = (
         f"""
-    <tr><td style="padding:6px 18px 0;">
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
-        <tr><td bgcolor="{PANEL}" style="background:{PANEL};border:1px solid {RULE};border-left:3px solid {EMBER};border-radius:6px;padding:12px 14px;font-family:{SANS};font-size:14px;color:{INK};line-height:1.5;">
-          <span style="font-family:{MONO};font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:{EMBER};">&#9733; Big story</span><br>{_esc(story)}
-        </td></tr>
-      </table>
+    <tr><td style="padding:24px 28px 0;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+        <td bgcolor="{ACCENT_BG}" class="gti-story gti-ink" style="background:{ACCENT_BG};border-left:4px solid {ACCENT};border-radius:6px;padding:14px 16px;font-family:{SANS};font-size:15px;line-height:22px;color:{INK};">
+          <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:{ACCENT};margin-bottom:3px;">Big story</div>
+          {_esc(story)}
+        </td>
+      </tr></table>
     </td></tr>"""
         if story else ""
     )
-
-    footer_link = (
-        f'<a href="{settings.FRONTEND_URL}" style="color:{LINK};text-decoration:none;font-weight:600;">Open the full dashboard &#8594;</a><br>'
-        if settings.FRONTEND_URL else ""
-    )
+    preheader = _esc(story or "This week's fastest-rising GitHub repositories")
 
     return f"""<!DOCTYPE html>
-<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"></head>
-<body style="margin:0;padding:0;background:{BODY};">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="{BODY}" style="background:{BODY};">
-    <tr><td align="center" style="padding:24px 12px;">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" bgcolor="{CARD}" style="width:600px;max-width:100%;background:{CARD};border:1px solid {BORDER};border-radius:10px;overflow:hidden;">
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark">
+<title>GitHub Trending Intelligence - Weekly Digest</title>
+<style>
+@media (prefers-color-scheme: dark) {{
+  body, .gti-bg {{ background:#0f1115 !important; }}
+  .gti-card {{ background:#181b21 !important; border-color:#2a2f38 !important; }}
+  .gti-ink {{ color:#f3f4f6 !important; }}
+  .gti-muted {{ color:#b6bcc6 !important; }}
+  .gti-dim {{ color:#8b93a1 !important; }}
+  .gti-rule {{ border-color:#2a2f38 !important; }}
+  .gti-story {{ background:#2a1d14 !important; }}
+}}
+</style></head>
+<body class="gti-bg" style="margin:0;padding:0;background:{BODY};">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">{preheader}</div>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="gti-bg" bgcolor="{BODY}" style="background:{BODY};">
+    <tr><td align="center" style="padding:28px 12px;">
+      <table role="presentation" width="620" cellpadding="0" cellspacing="0" class="gti-card" bgcolor="{CARD}" style="width:620px;max-width:100%;background:{CARD};border:1px solid {RULE};border-radius:12px;overflow:hidden;">
 
-        <tr><td style="padding:22px 18px 15px;border-bottom:1px solid {RULE};">
-          <div style="font-family:{MONO};font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:{EMBER};">GitHub Trending Intelligence</div>
-          <div style="font-family:{SANS};font-size:24px;font-weight:800;color:{INK};letter-spacing:-.02em;margin-top:5px;">Weekly Digest</div>
-          <div style="font-family:{MONO};font-size:12px;color:{DIM};margin-top:3px;">{date_range}</div>
+        <tr><td style="background:{ACCENT};padding:22px 28px;">
+          <a href="{site}" style="font-family:{SANS};font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#ffffff;text-decoration:none;">&#9733;&nbsp; GitHub Trending Intelligence</a>
+        </td></tr>
+
+        <tr><td style="padding:28px 28px 0;">
+          <div class="gti-ink" style="font-family:{SANS};font-size:28px;line-height:34px;font-weight:800;color:{INK};">Your weekly digest</div>
+          <div class="gti-dim" style="font-family:{SANS};font-size:14px;color:{DIM};margin-top:4px;">{date_range}</div>
         </td></tr>
 
         {story_block}
-        {_section("Breakouts", "new &amp; accelerating", breakouts, True)}
-        {_section("Top movers", "ranked by momentum", movers, False)}
+        {_section("Breakouts", "New repos that are accelerating fast", breakouts, True)}
+        {_section("Top movers", "Ranked by momentum", movers, False)}
 
-        <tr><td style="padding:20px 18px 24px;border-top:1px solid {RULE};font-family:{SANS};font-size:12px;color:{DIM};line-height:1.6;">
-          {footer_link}
-          Momentum is a 0-100 velocity score (stars, forks, contributors, commits), not a raw star count.
-          <span style="color:{GAIN};">Backed by activity</span> means the growth is matched by real commits or contributors;
-          <span style="color:{MUTED};">star-driven</span> means it is riding stars alone.
+        <tr><td align="center" class="gti-rule" style="padding:28px 28px 8px;border-top:1px solid {RULE};">
+          <a href="{site}/this-week" style="display:inline-block;background:{ACCENT};color:#ffffff;font-family:{SANS};font-size:15px;font-weight:700;text-decoration:none;padding:12px 26px;border-radius:8px;">Open the live dashboard</a>
         </td></tr>
 
+        <tr><td class="gti-dim" style="padding:18px 28px 26px;font-family:{SANS};font-size:12px;line-height:18px;color:{DIM};text-align:center;">
+          Momentum is a 0&ndash;100 velocity score (stars, forks, contributors, commits), not a raw star count.
+          &ldquo;Backed by activity&rdquo; means the growth is matched by real commits or contributors.
+        </td></tr>
       </table>
-      <div style="font-family:{MONO};font-size:11px;color:{DIM};margin-top:12px;">Sent by GitHub Trending Intelligence &middot; unsubscribe by removing the digest workflow secrets</div>
+      <div class="gti-dim" style="font-family:{SANS};font-size:12px;color:{DIM};margin-top:14px;line-height:18px;">
+        You&rsquo;re receiving this because you subscribed to the GTI weekly digest.<br>
+        <a href="{site}" style="color:{DIM};">GitHub Trending Intelligence</a>
+      </div>
     </td></tr>
   </table>
 </body></html>"""
