@@ -290,12 +290,13 @@ def _html_body(breakouts, movers, date_range: str) -> str:
 <body class="gti-bg" style="margin:0;padding:0;background:{BODY};">
   <div style="display:none;max-height:0;overflow:hidden;opacity:0;">{preheader}</div>
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="gti-bg" bgcolor="{BODY}" style="background:{BODY};">
+    <tr><td bgcolor="{ACCENT}" align="center" style="background:{ACCENT};padding:20px 12px;">
+      <table role="presentation" width="720" cellpadding="0" cellspacing="0" style="width:720px;max-width:100%;"><tr><td style="padding:0 8px;">
+        <a href="{site}" style="font-family:{SANS};font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#ffffff;text-decoration:none;">&#9733;&nbsp; GitHub Trending Intelligence</a>
+      </td></tr></table>
+    </td></tr>
     <tr><td align="center" style="padding:28px 12px;">
-      <table role="presentation" width="620" cellpadding="0" cellspacing="0" class="gti-card" bgcolor="{CARD}" style="width:620px;max-width:100%;background:{CARD};border:1px solid {RULE};border-radius:12px;overflow:hidden;">
-
-        <tr><td style="background:{ACCENT};padding:22px 28px;">
-          <a href="{site}" style="font-family:{SANS};font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:#ffffff;text-decoration:none;">&#9733;&nbsp; GitHub Trending Intelligence</a>
-        </td></tr>
+      <table role="presentation" width="720" cellpadding="0" cellspacing="0" class="gti-card" bgcolor="{CARD}" style="width:720px;max-width:100%;background:{CARD};border:1px solid {RULE};border-radius:12px;overflow:hidden;">
 
         <tr><td style="padding:28px 28px 0;">
           <div class="gti-ink" style="font-family:{SANS};font-size:28px;line-height:34px;font-weight:800;color:{INK};">Your weekly digest</div>
